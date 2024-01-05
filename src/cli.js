@@ -1,10 +1,69 @@
 import {startTests} from "./testRunner"
 import { reporter } from "./reporting"
+import {existsSync, readFileSync} from "fs";
 
-process.argv
+const testArgIndex = process.argv.findLastIndex(currentValue => currentValue == "--tests" || currentValue == "-t");
+let testPath = "./tests.json";
 
-const jsonFile = getJSONFile()
+if (testArgIndex > -1 && process.argv[testArgIndex + 1] != null) {
+    testPath = process.argv[testArgIndex + 1];
+}
 
-verifyJSON(jsonFile)
+if (!existsSync(testPath)) {
+    console.error(`Error: File does not exist at ${testPath}`);
+    process.exit(1);
+}
 
-await startTests(jsonFile, reporter)
+let tests = [];
+
+try {
+    const testsJSON = JSON.parse(readFileSync(testPath, "utf-8"));
+    
+    tests = testsJSON.tests.map(test => {
+        if (isValidTest(test)) {
+            return test;
+        }
+        else {
+            console.error(`Error: test is invalid`);
+            process.exit(1);
+        }
+    })
+}
+catch (e) {
+    console.error(`Error: Failed to parse JSON with error: \n${e}`);
+    process.exit(1);
+}
+
+await startTests(jsonFile, reporter);
+
+
+function isValidTest(test) {
+    // Check the main properties
+    if (typeof test.name !== 'string' || 
+        typeof test.pdfExportSettingsId !== 'string' || 
+        typeof test.outputEachDocumenThisAmount !== 'number' || 
+        typeof test.runAsync !== 'boolean') {
+        return false;
+    }
+
+    // Check the 'environment' object
+    if (typeof test.environment !== 'object' || 
+        typeof test.environment.name !== 'string' || 
+        typeof test.environment.backofficeUrl !== 'string' || 
+        typeof test.environment.auth !== 'string') {
+        return false;
+    }
+
+    // Check the 'documents' array
+    if (!Array.isArray(test.documents)) {
+        return false;
+    }
+    for (const doc of test.documents) {
+        if (typeof doc.id !== 'string' || 
+            typeof doc.savedInEditor !== 'boolean') {
+            return false;
+        }
+    }
+
+    return true;
+}
