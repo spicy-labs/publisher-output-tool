@@ -1,0 +1,26 @@
+{
+	"tests": [
+		{
+			"name":"test1",
+			"pdfExportSettingsId": "ewrwer",
+			"outputEachDocumenThisAmount": 3,
+			"runAsync": true,
+			"environment": {
+				"name":"ft-nostress", 
+				"backofficeUrl":"https://ft-nostress.chili-publish.online/ft-nostress/Interface.aspx",
+				"auth": "sdfdsafdsa"
+			},
+			"documents": [
+				{
+					"id": "12321312",
+					"savedInEditor": true
+				},
+								
+				{
+					"id": "12321312",
+					"savedInEditor": true
+				}
+			]
+		}
+	]
+}
