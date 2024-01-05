@@ -5,6 +5,8 @@ import {existsSync, readFileSync} from "fs";
 const testArgIndex = process.argv.findLastIndex(currentValue => currentValue == "--tests" || currentValue == "-t");
 let testPath = "./tests.json";
 
+// [nodepath, yourpath, -t, /config/tests.json]
+
 if (testArgIndex > -1 && process.argv[testArgIndex + 1] != null) {
     testPath = process.argv[testArgIndex + 1];
 }
@@ -21,10 +23,10 @@ try {
     
     tests = testsJSON.tests.map(test => {
         if (isValidTest(test)) {
-            return test;
+            return setDefaults(test);
         }
         else {
-            console.error(`Error: test is invalid`);
+            console.error(`Error: a test is invalid`);
             process.exit(1);
         }
     })
@@ -34,18 +36,32 @@ catch (e) {
     process.exit(1);
 }
 
+if (tests.length == 0) {
+    console.error(`Error: No tests found.`);
+    process.exit(1);
+}
+
 await startTests(jsonFile, reporter);
 
+function setDefaults(test) {
+
+    const testCopy = structuredClone(test)
+
+    if (typeof test.runAsync !== 'boolean') {
+        testCopy.runAsync = false;
+    }
+
+    return testCopy
+}
 
 function isValidTest(test) {
     // Check the main properties
     if (typeof test.name !== 'string' || 
         typeof test.pdfExportSettingsId !== 'string' || 
-        typeof test.outputEachDocumenThisAmount !== 'number' || 
-        typeof test.runAsync !== 'boolean') {
+        typeof test.outputEachDocumenThisAmount !== 'number') {
         return false;
     }
-
+    
     // Check the 'environment' object
     if (typeof test.environment !== 'object' || 
         typeof test.environment.name !== 'string' || 
