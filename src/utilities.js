@@ -1,4 +1,8 @@
+const { XMLParser} = require("fast-xml-parser");
+
 export function jsonifyChiliResponse(response) {
+    const fastXmlParser = new XMLParser();
+
     let data = fastXmlParser.parse(response, {
         ignoreAttributes: false,
         attrNodeName: false,
