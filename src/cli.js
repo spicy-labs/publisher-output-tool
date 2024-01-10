@@ -1,5 +1,5 @@
-import {startTests} from "./testRunner"
-import { reporter } from "./reporting"
+import {startTests} from "./testRunner.js"
+import { reporter } from "./reporting.js"
 import {existsSync, readFileSync} from "fs";
 
 const testArgIndex = process.argv.findLastIndex(currentValue => currentValue == "--tests" || currentValue == "-t");

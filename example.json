@@ -1,26 +1,26 @@
 {
 	"tests": [
-		{
-			"name":"test1",
-			"pdfExportSettingsId": "ewrwer",
-			"outputEachDocumenThisAmount": 3,
-			"runAsync": true,
-			"environment": {
-				"name":"ft-nostress", 
-				"backofficeUrl":"https://ft-nostress.chili-publish.online/ft-nostress/Interface.aspx",
-				"auth": "sdfdsafdsa"
-			},
-			"documents": [
-				{
-					"id": "12321312",
-					"savedInEditor": true
-				},
-								
-				{
-					"id": "12321312",
-					"savedInEditor": true
-				}
-			]
-		}
-	]
+        {
+            "name": "test1",
+            "pdfExportSettingsId": "some_export_settings",
+            "outputEachDocumenThisAmount": 3,
+            "runAsync": true,
+            "environment": {
+                "name": "ft-nostress",
+                "backofficeUrl": "https://ft-nostress.chili-publish.online/ft-nostress/Interface.aspx",
+                "auth": "some_api_key"
+            },
+            "documents": [
+                {
+                    "id": "229d8f09-3589-4cda-a2b3-8a99ddbefe84",
+                    "savedInEditor": true
+                },
+
+                {
+                    "id": "c8e687aa-a88e-4bae-af6e-28b43701229a",
+                    "savedInEditor": false
+                }
+            ]
+        }
+    ]
 }
