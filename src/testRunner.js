@@ -1,7 +1,6 @@
 import { generateAPIKey, documentCreatePDF, documentSetSavedInEditor, documentSetVariableValues, taskGetStatus, getPdfExportSettings } from './chili.js';
 import { jsonifyChiliResponse } from './utilities.js';
 import { hrtime } from 'node:process';
-import { reporter } from "./reporting.js";
 
 export async function startTests(tests, reporter) {
     for (var i = 0; i < tests.tests.length; i++) {
@@ -11,7 +10,7 @@ export async function startTests(tests, reporter) {
     }
 }
 
-export async function runTest(test, reporter) {
+export async function runTest(test) {
     // Build base URL from backoffice URL
     const baseURL = buildBaseURL(test.environment.backofficeUrl);
     // Check the auth type (was an API key provided or a user/password?)
