@@ -31,8 +31,6 @@ try {
     }
   });
 
-  await startTests(tests, createReporter());
-
 }
 catch (e) {
   console.error(`Error: Failed to parse JSON with error: \n${e}`);
@@ -41,6 +39,14 @@ catch (e) {
 
 if (tests.length == 0) {
   console.error(`Error: No tests found.`);
+  process.exit(1);
+}
+
+try {
+  await startTests(tests, createReporter());
+}
+catch (e) {
+  console.error(`Error: Error during testing wth \n${e}`);
   process.exit(1);
 }
 
