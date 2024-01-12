@@ -3,10 +3,12 @@ import { jsonifyChiliResponse } from './utilities.js';
 import { hrtime } from 'node:process';
 
 export async function startTests(tests, reporter) {
-  for (var i = 0; i < tests.tests.length; i++) {
-    reporter.createTestFile(tests.tests[i]);
-    let results = await runTest(tests.tests[i], reporter);
-    reporter.writeResultsToFile(results, tests.tests[i].name);
+  for (var i = 0; i < tests.length; i++) {
+    const test = tests[i];
+    console.log(reporter);
+    const report = await reporter.startReport(test.name);
+    let results = await runTest(test, report);
+    await report.writeTo(results);
   }
 }
 

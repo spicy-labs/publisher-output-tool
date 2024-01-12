@@ -1,5 +1,5 @@
 import { startTests } from "./testRunner.js"
-import { reporter } from "./reporting.js"
+import { createReporter } from "./reporting.js"
 import { existsSync, readFileSync } from "fs";
 
 const testArgIndex = process.argv.findLastIndex(currentValue => currentValue == "--tests" || currentValue == "-t");
@@ -31,7 +31,7 @@ try {
     }
   });
 
-  await startTests(tests, reporter);
+  await startTests(tests, createReporter());
 
 }
 catch (e) {
@@ -67,7 +67,7 @@ function isValidTest(test) {
   if (typeof test.environment !== 'object' ||
     typeof test.environment.name !== 'string' ||
     typeof test.environment.backofficeUrl !== 'string' ||
-    (typeof test.environment.auth !== 'string' || (typeof test.environment.auth.username !== 'string' && typeof test.environment.auth.password !== 'string'))) {
+    typeof test.environment.auth !== 'string') {
     return false;
   }
 
