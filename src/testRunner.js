@@ -15,6 +15,12 @@ export async function startTests(tests, reporter) {
 export async function runTest(test) {
   // Build base URL from backoffice URL
   const baseURL = buildBaseURL(test.environment.backofficeUrl);
+
+  if (baseURL == null) {
+    // TODO: Better error handling
+    throw "URL could not be found."
+  }
+
   // Check the auth type (was an API key provided or a user/password?)
   let apikey;
   if (typeof test.environment.auth === "string") {
@@ -121,8 +127,25 @@ export async function runTest(test) {
 
 }
 
-function buildBaseURL(url) {
-  const urlFirst = url.split("/")[0] + "/" + url.split("/")[1] + "/" + url.split("/")[2];
-  const urlSecond = "/rest-api/v1.2";
-  return urlFirst + urlSecond;
+function buildBaseURL(inputUrl) {
+  try {
+    const url = new URL(inputUrl);
+
+    // Split the pathname into segments
+    const pathSegments = url.pathname.split('/').filter(segment => segment.length > 0);
+
+    if (pathSegments.pop().toLowerCase() != "interface.aspx") {
+      throw "URL does point to the BackOffice";
+    }
+
+    pathSegments.pop();
+
+    // Replace with the new path
+    url.pathname = pathSegments.join("/") + '/rest-api/v1.2';
+
+    return url.toString();
+  } catch (error) {
+    console.error('Invalid URL:', error.message);
+    return null;
+  }
 }
