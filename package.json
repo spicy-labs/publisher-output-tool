@@ -2,15 +2,18 @@
   "name": "publisher-output-tool",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/cli.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "npx esbuild src/cli.js --bundle --platform=node --format=cjs --outfile=dist/bundled.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "fast-xml-parser": "^4.3.2"
+  },
+  "devDependencies": {
+    "esbuild": "0.20.1"
   }
 }

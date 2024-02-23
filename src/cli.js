@@ -43,7 +43,10 @@ if (tests.length == 0) {
 }
 
 try {
-  await startTests(tests, createReporter());
+  const asyncWrapper = async() => {
+    await startTests(tests, createReporter());
+  }
+  asyncWrapper();
 }
 catch (e) {
   console.error(`Error: Error during testing wth \n${e}`);
