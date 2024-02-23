@@ -65,7 +65,7 @@ function isValidTest(test) {
   // Check the main properties
   if (typeof test.name !== 'string' ||
     typeof test.pdfExportSettingsId !== 'string' ||
-    typeof test.outputEachDocumenThisAmount !== 'number') {
+    typeof test.outputEachDocumentThisAmount !== 'number') {
     return false;
   }
 
@@ -73,7 +73,7 @@ function isValidTest(test) {
   if (typeof test.environment !== 'object' ||
     typeof test.environment.name !== 'string' ||
     typeof test.environment.backofficeUrl !== 'string' ||
-    typeof test.environment.auth !== 'string') {
+    (typeof test.environment.auth !== 'string' && typeof test.environment.auth !== 'object')) {
     return false;
   }
 
