@@ -81,14 +81,14 @@ export async function runTest(test) {
         }
         // Loop through each task, check if it's done, remove from list if finished
         while (tasks.length != 0) {
-            tasks.forEach(async (task) => {
+            let taskChecks = tasks.map(async (task) => {
                 const taskStatusResult = await taskGetStatus(task.taskID, apikey, baseURL);
-                let taskPollFailures = 0;
+                task.taskPollFailures = (task.taskPollFailures) ? task.taskPollFailures + 1 : 0;
                 if(!taskStatusResult.isOK){
                     console.error(`Failed to poll task ${task.taskID} for doc ${task.docID}: ${taskStatusResult.errorMessage}`);
-                    taskPollFailures++;
+                    task.taskPollFailures++;
                     // Pop task from queue if more than 20 failures on API call
-                    if(taskPollFailures > 20){
+                    if(task.taskPollFailures > 20){
                         tasks.splice(tasks.indexOf(task), 1);
                         console.error(`Failed to poll task ${task.taskID} more than 20 times, aborting task`);
                     }
@@ -116,6 +116,8 @@ export async function runTest(test) {
                 }
             })
             // Wait half a second between each run
+            await Promise.all(taskChecks);
+
             await new Promise(r => setTimeout(r, 500));
         }
     }
@@ -152,12 +154,12 @@ export async function runTest(test) {
                     let taskRunning = true;
                     while (taskRunning) {
                         const taskStatusResult = await taskGetStatus(task.taskID, apikey, baseURL);
-                        let taskPollFailures = 0;
+                        task.taskPollFailures = (task.taskPollFailures) ? task.taskPollFailures + 1 : 0;
                         if(!taskStatusResult.isOK){
                             console.error(`Failed to poll task ${task.taskID} for doc ${task.docID}: ${taskStatusResult.errorMessage}`);
-                            taskPollFailures++;
+                            task.taskPollFailures++;
                             // Stop task running if API failures exceed 20
-                            if(taskPollFailures > 20){
+                            if(task.taskPollFailures > 20){
                                 taskRunning = false;
                                 console.error(`Failed to poll task ${task.taskID} more than 20 times, aborting task`);
                             }
