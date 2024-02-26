@@ -4,10 +4,8 @@ import * as util from "util";
 import * as fs from "fs";
 import * as os from "os";
 
-(async () => {
+const windowsBuild = async () => {
   const bundleCommand = 'npx esbuild src/cli.js --bundle --platform=node --format=cjs --outfile=dist/bundled.js';
-
-  //     const { stdout, stderr } = await util.promisify(exec)(bundleCommand);
 
   let [results, error] = await _try(
     () => util.promisify(exec)(bundleCommand),
@@ -40,7 +38,7 @@ import * as os from "os";
   if (error) return;
   console.log("generated blob");
 
-  const targetFileName = os.platform() === 'win32' ? 'publisher-output-tool.exe' : 'publisher-output-tool';
+  const targetFileName = 'publisher-output-tool.exe';
 
   [results, error] = await _try(
     async () => fs.copyFileSync(process.execPath, `./${targetFileName}`),
@@ -55,15 +53,6 @@ import * as os from "os";
     "--sentinel-fuse": "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2"
   }
 
-  if (os.platform == "darwin") {
-    injectArgs["--macho-segment-name"] = "NODE_SEA";
-    [results, error] = await _try(
-      () => util.promisify(exec)(`codesign --remove-signature ${targetFileName}`),
-      (e) => console.error(`exec blob gen error: ${e}`));
-
-    if (error) return;
-    console.log("removed remove-signature");
-  }
 
 
   const injectCommand = `npx postject ${targetFileName} ` + Object.entries(injectArgs).reduce((str, [key, value], index, array) => {
@@ -77,7 +66,35 @@ import * as os from "os";
   if (error) return;
   console.log("injected blob into exec");
 
-})()
+}
+
+const macBuild = async () => {
+  const bundleCommand = 'npx esbuild src/cli.js --bundle --platform=node --format=cjs --outfile=dist/bundled.js';
+
+  let [results, error] = await _try(
+    () => util.promisify(exec)(bundleCommand),
+    (e) => console.error(`exec esbuild error: ${e}`))
+
+  if (error) return;
+  console.log("bundle javascript");
+
+  const compileCommand = "bun build ./dist/bundled.js --compile --outfile publisher-output-tool";
+
+  [results, error] = await _try(
+    () => util.promisify(exec)(compileCommand),
+    (e) => console.error(`compile command error: ${e}`));
+
+  if (error) return;
+  console.log("generated executable");
+}
+
+if (os.platform == "win32") {
+  await windowsBuild();
+}
+else {
+  await macBuild();
+}
+
 
 
 async function _try(fnc, handleErrorMessage) {
