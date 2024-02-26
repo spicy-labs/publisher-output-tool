@@ -57,7 +57,14 @@ import * as os from "os";
 
   if (os.platform == "darwin") {
     injectArgs["--macho-segment-name"] = "NODE_SEA";
+    [results, error] = await _try(
+      () => util.promisify(exec)(`codesign --remove-signature ${targetFileName}`),
+      (e) => console.error(`exec blob gen error: ${e}`));
+
+    if (error) return;
+    console.log("removed remove-signature");
   }
+
 
   const injectCommand = `npx postject ${targetFileName} ` + Object.entries(injectArgs).reduce((str, [key, value], index, array) => {
     return str + key + ' ' + value + (index < array.length - 1 ? ' ' : '');
