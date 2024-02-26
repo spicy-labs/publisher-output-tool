@@ -3,17 +3,38 @@ import * as util from "util";
 import * as fs from "fs";
 import * as os from "os";
 
+const fileName = "publisher-output-tool";
+
 (async () => {
   await bundle()
 
   if (os.platform() == "win32") {
-    await windowsBuild();
+    await windowsBuild(fileName);
+    await cleanUp(`${fileName}.exe`);
   }
   else {
-    await macBuild();
+    await macBuild(fileName);
+    await cleanUp(fileName);
   }
   process.exit(0);
 })();
+
+async function cleanUp(fileNameIgnore) {
+
+  const directoryPath = "./dist/";
+
+  let [result, error] = await _try(async () => {
+    const files = fs.readdirSync(directoryPath);
+
+    for (let file of files) {
+      if (file !== fileNameIgnore) {
+        fs.rmSync(directoryPath + file);
+      }
+    }
+  });
+
+  if (error) process.exit(1);
+}
 
 async function bundle() {
   const bundleCommand = 'npx esbuild src/cli.js --bundle --platform=node --format=cjs --outfile=dist/bundled.js';
@@ -26,7 +47,7 @@ async function bundle() {
   console.log("bundle javascript");
 }
 
-async function windowsBuild() {
+async function windowsBuild(fileName) {
 
   const configObject = {
     "main": "./dist/bundled.js",
@@ -53,7 +74,7 @@ async function windowsBuild() {
   if (error) process.exit(1);
   console.log("generated blob");
 
-  const targetFileName = 'publisher-output-tool.exe';
+  const targetFileName = fileName + ".exe";
 
   [results, error] = await _try(
     async () => fs.copyFileSync(process.execPath, `./dist/${targetFileName}`),
@@ -81,8 +102,8 @@ async function windowsBuild() {
 
 }
 
-async function macBuild() {
-  const compileCommand = "bun build ./dist/bundled.js --compile --outfile ./dist/publisher-output-tool";
+async function macBuild(fileName) {
+  const compileCommand = `bun build ./dist/bundled.js --compile --outfile ./dist/${fileName}`;
 
   let [results, error] = await _try(
     () => util.promisify(exec)(compileCommand),
