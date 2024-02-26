@@ -43,7 +43,10 @@ if (tests.length == 0) {
 }
 
 try {
-  await startTests(tests, createReporter());
+  const asyncWrapper = async() => {
+    await startTests(tests, createReporter());
+  }
+  asyncWrapper();
 }
 catch (e) {
   console.error(`Error: Error during testing wth \n${e}`);
@@ -65,7 +68,7 @@ function isValidTest(test) {
   // Check the main properties
   if (typeof test.name !== 'string' ||
     typeof test.pdfExportSettingsId !== 'string' ||
-    typeof test.outputEachDocumenThisAmount !== 'number') {
+    typeof test.outputEachDocumentThisAmount !== 'number') {
     return false;
   }
 
@@ -73,7 +76,7 @@ function isValidTest(test) {
   if (typeof test.environment !== 'object' ||
     typeof test.environment.name !== 'string' ||
     typeof test.environment.backofficeUrl !== 'string' ||
-    typeof test.environment.auth !== 'string') {
+    (typeof test.environment.auth !== 'string' && typeof test.environment.auth !== 'object')) {
     return false;
   }
 
