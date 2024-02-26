@@ -37,14 +37,14 @@ async function windowsBuild() {
   const jsonString = JSON.stringify(configObject, null, 2);
 
   let [results, error] = await _try(
-    async () => fs.writeFileSync("./sea-config.json", jsonString, "utf8"),
+    async () => fs.writeFileSync("./dist/sea-config.json", jsonString, "utf8"),
     (e) => console.error(`config write error: ${e}`)
   );
 
   if (error) process.exit(1);
   console.log("generated config");
 
-  const blobCommand = "node --experimental-sea-config sea-config.json";
+  const blobCommand = "node --experimental-sea-config ./dist/sea-config.json";
 
   [results, error] = await _try(
     () => util.promisify(exec)(blobCommand),
@@ -56,7 +56,7 @@ async function windowsBuild() {
   const targetFileName = 'publisher-output-tool.exe';
 
   [results, error] = await _try(
-    async () => fs.copyFileSync(process.execPath, `./${targetFileName}`),
+    async () => fs.copyFileSync(process.execPath, `./dist/${targetFileName}`),
     (e) => console.error(`exe copy error: ${e}`)
   )
 
@@ -68,7 +68,7 @@ async function windowsBuild() {
     "--sentinel-fuse": "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2"
   }
 
-  const injectCommand = `npx postject ${targetFileName} ` + Object.entries(injectArgs).reduce((str, [key, value], index, array) => {
+  const injectCommand = `npx postject ./dist/${targetFileName} ` + Object.entries(injectArgs).reduce((str, [key, value], index, array) => {
     return str + key + ' ' + value + (index < array.length - 1 ? ' ' : '');
   }, '');
 
@@ -82,7 +82,7 @@ async function windowsBuild() {
 }
 
 async function macBuild() {
-  const compileCommand = "bun build ./dist/bundled.js --compile --outfile publisher-output-tool";
+  const compileCommand = "bun build ./dist/bundled.js --compile --outfile ./dist/publisher-output-tool";
 
   let [results, error] = await _try(
     () => util.promisify(exec)(compileCommand),
