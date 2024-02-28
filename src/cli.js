@@ -75,17 +75,12 @@ function isValidTest(test) {
       const testObj = check.prop.reduce((o, key) => Reflect.get(o, key), object);
       const [isValidType, validType] = check.types.reduce(([isValid, validType], type) => {
         if (isValid) return [isValid, validType];
-        console.log(testObj);
-        console.log(typeof testObj);
         return [typeof testObj === type, type]
       }, [false, null]);
       if (!isValidType) {
         errors.push(`${check.prop.join(".")} is not of type ${check.types.join(", ")}`);
       }
       if (isValidType && validType === "object" && check.schema) {
-
-        // console.log(testObj, check);
-
         if (check.array) {
           if (!Array.isArray(testObj)) {
             errors.push(`${check.prop.join(".")} is not an array`);
