@@ -6,7 +6,7 @@ export async function generateAPIKey(user, pass, environment, url) {
   let result = {
     response: "",
     isOK: false,
-    errorMessage: "",
+    error: "",
   };
 
   try {
@@ -23,12 +23,12 @@ export async function generateAPIKey(user, pass, environment, url) {
 
     if (!response.ok) {
       result.isOK = false;
-      result.errorMessage = `GenerateApiKey failed with message: ${response.status} ${response.statusText}, ${await response.text()}`;
+      result.error = Error(`GenerateApiKey failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
     } else {
       const responseJSON = jsonifyChiliResponse(await response.text());
       if (responseJSON.succeeded == "false") {
         result.isOK = false;
-        result.errorMessage = responseJSON.errorMessage;
+        result.error = Error(responseJSON.errorMessage);
       } else {
         result.isOK = true;
         result.response = responseJSON.key;
@@ -36,7 +36,7 @@ export async function generateAPIKey(user, pass, environment, url) {
     }
   } catch (err) {
     result.isOK = false;
-    result.errorMessage = err.message;
+    result.error = err;
   }
   return result;
 }
@@ -46,7 +46,7 @@ export async function documentCreatePDF(id, exportSettings, apikey, url) {
   let result = {
     response: "",
     isOK: false,
-    errorMessage: "",
+    error: "",
   };
   try {
     const response = await fetch(
@@ -63,7 +63,7 @@ export async function documentCreatePDF(id, exportSettings, apikey, url) {
 
     if (!response.ok) {
       result.isOK = false;
-      result.errorMessage = `DocumentCreatePDF failed with message: ${response.status} ${response.statusText}, ${await response.text()}`;
+      result.error = Error(`DocumentCreatePDF failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
     } else {
       const responseJSON = jsonifyChiliResponse(await response.text());
       result.isOK = true;
@@ -71,7 +71,7 @@ export async function documentCreatePDF(id, exportSettings, apikey, url) {
     }
   } catch (err) {
     result.isOK = false;
-    result.errorMessage = err.message;
+    result.error = err;
   }
   return result;
 }
@@ -81,7 +81,7 @@ export async function documentGetXML(id, apikey, url) {
     responseName: "",
     responseXML: "",
     isOK: false,
-    errorMessage: "",
+    error: "",
   };
   try {
     const response = await fetch(url + `/resources/documents/items/${id}/xml`, {
@@ -93,7 +93,7 @@ export async function documentGetXML(id, apikey, url) {
 
     if (!response.ok) {
       result.isOK = false;
-      result.errorMessage = `ResourceItemGetXML failed with message: ${response.status} ${response.statusText}, ${await response.text()}`;
+      result.error = Error(`ResourceItemGetXML failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
     } else {
       const responseText = await response.text();
       const responseJSON = jsonifyChiliResponse(responseText);
@@ -103,7 +103,7 @@ export async function documentGetXML(id, apikey, url) {
     }
   } catch (err) {
     result.isOK = false;
-    result.errorMessage = err.message;
+    result.error = err;
   }
   return result;
 }
@@ -117,7 +117,7 @@ export async function documentSetVariableValues(
 ) {
   let result = {
     isOK: false,
-    errorMessage: "",
+    error: "",
   };
   try {
     const response = await fetch(
@@ -134,13 +134,13 @@ export async function documentSetVariableValues(
 
     if (!response.ok) {
       result.isOK = false;
-      result.errorMessage = `DocumentSetVariableValues failed with message: ${response.status} ${response.statusText}, ${await response.text()}`;
+      result.error = Error(`DocumentSetVariableValues failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
     } else {
       result.isOK = true;
     }
   } catch (err) {
     result.isOK = false;
-    result.errorMessage = err.message;
+    result.error = err;
   }
   return result;
 }
@@ -161,7 +161,7 @@ export async function taskGetStatus(taskID, apikey, url) {
   let result = {
     response: "",
     isOK: false,
-    errorMessage: "",
+    error: "",
   };
   try {
     const response = await fetch(url + `/system/tasks/${taskID}/status`, {
@@ -173,13 +173,13 @@ export async function taskGetStatus(taskID, apikey, url) {
 
     if (!response.ok) {
       result.isOK = false;
-      result.errorMessage = `TaskGetStatus failed with message: ${response.status} ${response.statusText}, ${await response.text()}`;
+      result.error = Error(`TaskGetStatus failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
     } else {
       const responseJSON = jsonifyChiliResponse(await response.text());
       // Check if task exists
       if (responseJSON.found == "false") {
         result.isOK = false;
-        result.errorMessage = `No task found at ID ${taskID}`;
+        result.error = Error(`No task found at ID ${taskID}`);
       } else {
         result.isOK = true;
         result.response = responseJSON;
@@ -187,7 +187,7 @@ export async function taskGetStatus(taskID, apikey, url) {
     }
   } catch (err) {
     result.isOK = false;
-    result.errorMessage = err.message;
+    result.error = err;
   }
   return result;
 }
@@ -197,7 +197,7 @@ export async function getPdfExportSettings(id, apikey, url) {
   let result = {
     response: "",
     isOK: false,
-    errorMessage: "",
+    error: "",
   };
   try {
     const response = await fetch(
@@ -212,13 +212,13 @@ export async function getPdfExportSettings(id, apikey, url) {
 
     if (!response.ok) {
       result.isOK = false;
-      result.errorMessage = `ResourceItemGetByIdOrPath failed with message: ${response.status} ${response.statusText}, ${await response.text()}`;
+      result.error = Error(`ResourceItemGetByIdOrPath failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
     } else {
       const responseText = await response.text();
       // Error if no PDF settings found at ID
       if (responseText == "<none />") {
         result.isOK = false;
-        result.errorMessage = `No PDF export settings found at ID ${id}`;
+        result.error = Error(`No PDF export settings found at ID ${id}`);
       } else {
         result.isOK = true;
         result.response = responseText;
@@ -226,7 +226,7 @@ export async function getPdfExportSettings(id, apikey, url) {
     }
   } catch (err) {
     result.isOK = false;
-    result.errorMessage = err.message;
+    result.error = err;
   }
   return result;
 }
