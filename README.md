@@ -17,6 +17,49 @@ This project is still being developed (WIP) and might never be feature complete,
 ## JSON File
 The `tests.json` file describes the tests that you wish to run.
 
+The JSON file should be set up as follows:
+```JSON
+{
+    "tests": [
+        {
+            "name": string,
+            "pdfExportSettingsId": string,
+            "outputEachDocumentThisAmount": int,
+            "randomizeOrder": boolean,
+            "runAsync": boolean,
+            "environment": {
+                "name": string,
+                "backofficeUrl": string,
+                "auth": string || {"userName": string,  "password": string}
+            },
+            "documents": [
+                {
+                    "id": string,
+                    "savedInEditor": boolean
+                }
+            ]
+        }
+    ]
+}
+```
+The JSON consists of a list of **tests** at the top level, each item added to **tests** will designate a separate test to be run with a separate output file.
+
+Each **test** object consists of the following properties:  
+- **name**: The name you designate for the test. This is what the resulting output file will be called
+- **pdfExportSettingsId**: The CHILI ID for the PDF expport settings you want to use for the tests
+- **outputEachDocumentThisAmount**: The amount of outputs to run on each provided document
+- **randomizeOrder**: `not implemented` Whether or not to randomize the order in which documents are output
+- **runAsync**: Whether or not to run document outputs asynchronously; if set to true, then every document output task will be queued at once and won't wait for the previous task to resolve
+- **environment**: An object to hold the following CHILI environment information:
+  -  **name**: The CHILI environment name (typically structured like "cp-abc-123")
+  - **backofficeURL**: The base URL used to access the CHILI backoffice (i.e. *https://cp-abc-123.chili-publish.online/interface.aspx*)
+  - **auth**: Provides authentication information. This can be supplied in two ways, either a live API key can be directly provided as a string, or an object can be provided with the following properties:
+    - **userName**: A Publisher API User's username
+    - **password**: A Publisher API User's password
+- **documents**: A list of objects providing information on each document that you want to test that provides the following information:
+  - **id**: The document's CHILI ID
+  - **savedInEditor**: Sets the documents `savedInEditor` attribute to the boolean value provided
+
 <br/>
 
 # Build
