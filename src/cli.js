@@ -22,13 +22,16 @@ try {
   const testsJSON = JSON.parse(readFileSync(testPath, "utf-8"));
 
   tests = testsJSON.tests.map(test => {
-    if (isValidTest(test)) {
-      return setDefaults(test);
-    }
-    else {
-      console.error(`Error: a test is invalid`);
+    const errors = isValidTest(test);
+
+    if (errors.length > 0) {
+      for (const err of errors) {
+        console.error("Error: " + err);
+      }
       process.exit(1);
     }
+
+    return setDefaults(test);
   });
 
 }
@@ -43,7 +46,7 @@ if (tests.length == 0) {
 }
 
 try {
-  const asyncWrapper = async() => {
+  const asyncWrapper = async () => {
     await startTests(tests, createReporter());
   }
   asyncWrapper();
@@ -65,31 +68,61 @@ function setDefaults(test) {
 }
 
 function isValidTest(test) {
-  // Check the main properties
-  if (typeof test.name !== 'string' ||
-    typeof test.pdfExportSettingsId !== 'string' ||
-    typeof test.outputEachDocumentThisAmount !== 'number') {
-    return false;
+
+  const checkObjectMeetsSchema = (object, schema) => {
+
+    return schema.reduce((errors, check) => {
+      const testObj = check.prop.reduce((o, key) => Reflect.get(o, key), object);
+      const [isValidType, validType] = check.types.reduce(([isValid, validType], type) => {
+        if (isValid) return [isValid, validType];
+        console.log(testObj);
+        console.log(typeof testObj);
+        return [typeof testObj === type, type]
+      }, [false, null]);
+      if (!isValidType) {
+        errors.push(`${check.prop.join(".")} is not of type ${check.types.join(", ")}`);
+      }
+      if (isValidType && validType === "object" && check.schema) {
+
+        // console.log(testObj, check);
+
+        if (check.array) {
+          if (!Array.isArray(testObj)) {
+            errors.push(`${check.prop.join(".")} is not an array`);
+          }
+          else {
+            for (const obj of testObj) {
+              errors = [...checkObjectMeetsSchema(obj, check.schema), ...errors];
+            }
+          }
+        }
+        else {
+          errors = [...checkObjectMeetsSchema(testObj, check.schema), ...errors];
+        }
+      }
+      return errors;
+    }, []);
   }
 
-  // Check the 'environment' object
-  if (typeof test.environment !== 'object' ||
-    typeof test.environment.name !== 'string' ||
-    typeof test.environment.backofficeUrl !== 'string' ||
-    (typeof test.environment.auth !== 'string' && typeof test.environment.auth !== 'object')) {
-    return false;
-  }
-
-  // Check the 'documents' array
-  if (!Array.isArray(test.documents)) {
-    return false;
-  }
-  for (const doc of test.documents) {
-    if (typeof doc.id !== 'string' ||
-      typeof doc.savedInEditor !== 'boolean') {
-      return false;
+  const schema = [
+    { prop: ["name"], types: ["string"] },
+    { prop: ["pdfExportSettingsId"], types: ["string"] },
+    { prop: ["outputEachDocumentThisAmount"], types: ["number"] },
+    { prop: ["environment", "name"], types: ["string"] },
+    { prop: ["environment", "backofficeUrl"], types: ["string"] },
+    {
+      prop: ["environment", "auth"], types: ["string", "object"], schema: [
+        { prop: ["userName"], types: ["string"] },
+        { prop: ["password"], types: ["string"] }
+      ]
+    },
+    {
+      prop: ["documents"], types: ["object"], array: true, schema: [
+        { prop: ["id"], types: ["string"] },
+        { prop: ["savedInEditor"], types: ["boolean"] },
+      ]
     }
-  }
+  ]
 
-  return true;
+  return checkObjectMeetsSchema(test, schema);
 }
