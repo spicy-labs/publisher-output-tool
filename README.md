@@ -18,13 +18,13 @@ This project is still being developed (WIP) and might never be feature complete,
 The `tests.json` file describes the tests that you wish to run.
 
 The JSON file should be set up as follows:
-```JSON
+```bash
 {
     "tests": [
         {
             "name": string,
             "pdfExportSettingsId": string,
-            "outputEachDocumentThisAmount": int,
+            "outputEachDocumentThisAmount": number,
             "randomizeOrder": boolean,
             "runAsync": boolean,
             "environment": {
@@ -49,7 +49,7 @@ Each **test** object consists of the following properties:
 - **pdfExportSettingsId**: The CHILI ID for the PDF expport settings you want to use for the tests
 - **outputEachDocumentThisAmount**: The amount of outputs to run on each provided document
 - **randomizeOrder**: `not implemented` Whether or not to randomize the order in which documents are output
-- **runAsync**: Whether or not to run document outputs asynchronously; if set to true, then every document output task will be queued at once and won't wait for the previous task to resolve
+- **runAsync**: Whether or not to run document outputs asynchronously; if set to `true`, then every document output task will be queued at once and won't wait for the previous task to resolve. Optional, will default to `false` if missing.
 - **environment**: An object to hold the following CHILI environment information:
   -  **name**: The CHILI environment name (typically structured like "cp-abc-123")
   - **backofficeURL**: The base URL used to access the CHILI backoffice (i.e. *https://cp-abc-123.chili-publish.online/interface.aspx*)
