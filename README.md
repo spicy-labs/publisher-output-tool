@@ -8,11 +8,14 @@ This project is still being developed (WIP) and might never be feature complete,
 <br/>
 
 # Usage
-1. **Get the Tool:** Download it from the [Releases](https://github.com/spicy-labs/publisher-output-tool/releases) page on GitHub for your computer, and store it in an appropiate location.
+1. **Get the Tool:** Download it from the [Releases](https://github.com/spicy-labs/publisher-output-tool/releases) page on GitHub for your computer, and unzip the file.
 2. **Prepare Test Instructions:** Create a tests.json file in the same folder as the downloaded tool.
 3. **Write Your Tests:** Fill in the `tests.json` file with the tests you want to run. See below for more details.
 4. **Open Terminal or PowerShell:** Get ready to run the tool through the shell.
-5. **Run the Tool:** Change directory (`cd`) to where the tool was downloaded, then start it by typing ./publisher-output-tool on Mac/Linux or ./publisher-output-tool.exe on Windows.
+6. **Run the Tool:**
+    - Change directory (`cd`) to where the tool was downloaded
+    - If you are on Mac or Linux, you need to use `sudo chmod 755 ./publisher-output-tool` to give yourself file permissions.
+    - Then start it by typing `./publisher-output-tool` on Mac/Linux or `./publisher-output-tool.exe` on Windows.
 
 ## JSON File
 The `tests.json` file describes the tests that you wish to run.
