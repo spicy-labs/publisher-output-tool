@@ -1,0 +1,55 @@
+name: Node.js CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.version_change.outputs.changed }}
+      version: ${{ steps.version_change.outputs.version }}
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Check for version changes
+        id: version_change
+        uses: EndBug/version-check@v2
+        with:
+          file: package.json
+
+  build:
+    needs: version-check
+    if: needs.version-check.outputs.changed == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+        node-version: ['21.6.2']
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ matrix.node-version }}
+          
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install bun
+        if: matrix.os != 'windows-latest'
+        run: npm install -g bun
+
+      - name: Run build
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: publisher-output-tool-${{ matrix.os }}-${{ needs.version-check.outputs.version }}
+          path: ./dist/
