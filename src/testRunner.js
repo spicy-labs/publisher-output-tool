@@ -5,7 +5,6 @@ import { hrtime } from 'node:process';
 export async function startTests(tests, reporter) {
     for (var i = 0; i < tests.length; i++) {
         const test = tests[i];
-        console.log(reporter);
         const report = await reporter.startReport(test.name);
         let results = await runTest(test, report);
         await report.writeTo(results);
@@ -18,7 +17,7 @@ export async function runTest(test) {
 
     if (baseURL == null) {
         // TODO: Better error handling
-        throw "URL could not be found."
+        throw new Error("URL could not be found.");
     }
 
     // Check the auth type (was an API key provided or a user/password?)
@@ -29,7 +28,7 @@ export async function runTest(test) {
     else {
         const apikeyResult = await generateAPIKey(test.environment.auth.userName, test.environment.auth.password, test.environment.name, baseURL);
         if (!apikeyResult.isOK) {
-            throw apikeyResult.errorMessage;
+            throw apikeyResult.error;
         }
         apikey = apikeyResult.response;
     }
@@ -37,7 +36,7 @@ export async function runTest(test) {
     // Fetch PDF export settings
     const pdfExportSettingsResult = await getPdfExportSettings(test.pdfExportSettingsId, apikey, baseURL);
     if (!pdfExportSettingsResult.isOK) {
-        throw pdfExportSettingsResult.errorMessage;
+        throw pdfExportSettingsResult.error;
     }
     const pdfExportSettings = pdfExportSettingsResult.response;
 
@@ -54,7 +53,7 @@ export async function runTest(test) {
             // Check if the document exists or not, this also has the document name and XML stored in it so can be used to add functionality down the line
             const getDocXMLResult = await documentGetXML(test.documents[i].id, apikey, baseURL);
             if(!getDocXMLResult.isOK){
-                console.error(`Aborting tests for doc ${test.documents[i].id} with message: ${getDocXMLResult.errorMessage}`);
+                console.error(`Aborting tests for doc ${test.documents[i].id} with message: ${getDocXMLResult.error}`);
             }
             else{
                 for (var x = 0; x < test.outputEachDocumentThisAmount; x++) {
@@ -65,13 +64,13 @@ export async function runTest(test) {
                         // Continue with test if setting savedInEditor fails for whatever reason, log in console
                         if (!savedInEditorResult.isOK) {
                             // This should only actually fail if either CHILI is wholly down or if the provided PDF settings are no good
-                            console.error(`Failed to set savedInEditor for output attempt ${x + 1} on doc ${test.documents[i].id}: ${savedInEditorResult.errorMessage}`);
+                            console.error(`Failed to set savedInEditor for output attempt ${x + 1} on doc ${test.documents[i].id}: ${savedInEditorResult.error}`);
                         }
                     }
                     // Check for createPDF endpoint failing, handle accordingly
                     const generatePDF = await documentCreatePDF(test.documents[i].id, pdfExportSettings, apikey, baseURL);
                     if (!generatePDF.isOK) {
-                        console.error(`Output attempt ${x + 1} on doc ${test.documents[i].id} failed: ${generatePDF.errorMessage}`);
+                        console.error(`Output attempt ${x + 1} on doc ${test.documents[i].id} failed: ${generatePDF.error}`);
                     }
                     else {
                         tasks.push({ "docID": test.documents[i].id, "taskID": generatePDF.response });
@@ -85,7 +84,7 @@ export async function runTest(test) {
                 const taskStatusResult = await taskGetStatus(task.taskID, apikey, baseURL);
                 task.taskPollFailures = (task.taskPollFailures) ? task.taskPollFailures + 1 : 0;
                 if(!taskStatusResult.isOK){
-                    console.error(`Failed to poll task ${task.taskID} for doc ${task.docID}: ${taskStatusResult.errorMessage}`);
+                    console.error(`Failed to poll task ${task.taskID} for doc ${task.docID}: ${taskStatusResult.error}`);
                     task.taskPollFailures++;
                     // Pop task from queue if more than 20 failures on API call
                     if(task.taskPollFailures > 20){
@@ -127,7 +126,7 @@ export async function runTest(test) {
             // Check if the document exists or not, this also has the document name and XML stored in it so can be used to add functionality down the line
             const getDocXMLResult = await documentGetXML(test.documents[i].id, apikey, baseURL);
             if(!getDocXMLResult.isOK){
-                console.error(`Aborting tests for doc ${test.documents[i].id} with message: ${getDocXMLResult.errorMessage}`);
+                console.error(`Aborting tests for doc ${test.documents[i].id} with message: ${getDocXMLResult.error}`);
             }
             else{
                 for (var x = 0; x < test.outputEachDocumentThisAmount; x++) {
@@ -138,14 +137,14 @@ export async function runTest(test) {
                         // Continue with test if setting savedInEditor fails for whatever reason, log in console
                         if (!savedInEditorResult.isOK) {
                             // This should only actually fail if either CHILI is wholly down or if the provided PDF settings are no good
-                            console.error(`Failed to set savedInEditor for output attempt ${x + 1} on doc ${test.documents[i].id}: ${savedInEditorResult.errorMessage}`);
+                            console.error(`Failed to set savedInEditor for output attempt ${x + 1} on doc ${test.documents[i].id}: ${savedInEditorResult.error}`);
                         }
                     }
                     const start = hrtime.bigint();
                     const generatePDF = await documentCreatePDF(test.documents[i].id, pdfExportSettings, apikey, baseURL);
                     let task;
                     if (!generatePDF.isOK) {
-                        console.error(`Output attempt ${x + 1} on doc ${test.documents[i].id} failed: ${generatePDF.errorMessage}`);
+                        console.error(`Output attempt ${x + 1} on doc ${test.documents[i].id} failed: ${generatePDF.error}`);
                     }
                     else {
                         task = { "docID": test.documents[i].id, "taskID": generatePDF.response };
@@ -156,7 +155,7 @@ export async function runTest(test) {
                         const taskStatusResult = await taskGetStatus(task.taskID, apikey, baseURL);
                         task.taskPollFailures = (task.taskPollFailures) ? task.taskPollFailures + 1 : 0;
                         if(!taskStatusResult.isOK){
-                            console.error(`Failed to poll task ${task.taskID} for doc ${task.docID}: ${taskStatusResult.errorMessage}`);
+                            console.error(`Failed to poll task ${task.taskID} for doc ${task.docID}: ${taskStatusResult.error}`);
                             task.taskPollFailures++;
                             // Stop task running if API failures exceed 20
                             if(task.taskPollFailures > 20){
@@ -207,7 +206,7 @@ function buildBaseURL(inputUrl) {
         const pathSegments = url.pathname.split('/').filter(segment => segment.length > 0);
 
         if (pathSegments.pop().toLowerCase() != "interface.aspx") {
-            throw "URL does point to the BackOffice";
+            throw new Error("URL does point to the BackOffice");
         }
 
         pathSegments.pop();
