@@ -124,7 +124,12 @@ function isValidTest(test) {
 
   const schema = [
     { prop: ["name"], types: ["string"] },
-    { prop: ["pdfExportSettingsId"], types: ["string"] },
+    {
+      or: [
+        { prop: ["pdfExportSettingsId"], types: ["string"] },
+        { prop: ["pdfExportSettingsXml"], types: ["string"] },
+      ]
+    },
     { prop: ["outputEachDocumentThisAmount"], types: ["number"] },
     { prop: ["environment", "name"], types: ["string"] },
     { prop: ["environment", "backofficeUrl"], types: ["string"] },
