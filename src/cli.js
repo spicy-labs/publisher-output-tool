@@ -58,7 +58,7 @@ catch (e) {
 
 function setDefaults(test) {
 
-  const testCopy = structuredClone(test)
+  const testCopy = structuredClone(test);
 
   if (typeof test.runAsync !== 'boolean') {
     testCopy.runAsync = false;
@@ -69,30 +69,53 @@ function setDefaults(test) {
 
 function isValidTest(test) {
 
+  const getPropInObjectFromCheck = (object, check) => {
+    const checks = (check.or) ? check.or : [check];
+    return checks
+      .map((check) => ({ check, prop: check.prop.reduce((subObject, key) => Reflect.get(subObject, key), object) }))
+      .filter(x => x.prop != undefined)
+      .reduce((_, x) => x, { check: undefined, prop: undefined })
+  };
+
+  const getErrorMessage = (check, type) => {
+    const checks = (check.or) ? check.or : [check];
+    const msg = checks.reduce((str, check, idx) => str + (idx == 0 ? "" : " or ") + `${check.prop.join(".")} is not of type ${check.types.join(", ")}`, "");
+    return msg + ", instead got " + type;
+  }
+
   const checkObjectMeetsSchema = (object, schema) => {
 
     return schema.reduce((errors, check) => {
-      const testObj = check.prop.reduce((o, key) => Reflect.get(o, key), object);
+      const { check: checkFiltered, prop: testProp } = getPropInObjectFromCheck(object, check);
+
+      if (!checkFiltered) {
+        return [getErrorMessage(check, "undefined"), ...errors];
+      }
+
+      check = checkFiltered;
+
       const [isValidType, validType] = check.types.reduce(([isValid, validType], type) => {
         if (isValid) return [isValid, validType];
-        return [typeof testObj === type, type]
+        return [typeof testProp === type, type]
       }, [false, null]);
+
       if (!isValidType) {
-        errors.push(`${check.prop.join(".")} is not of type ${check.types.join(", ")}`);
+        errors.push(getErrorMessage(check, typeof testProp));
       }
+
       if (isValidType && validType === "object" && check.schema) {
         if (check.array) {
-          if (!Array.isArray(testObj)) {
+          if (!Array.isArray(testProp)) {
             errors.push(`${check.prop.join(".")} is not an array`);
           }
           else {
-            for (const obj of testObj) {
+            for (const obj of testProp) {
               errors = [...checkObjectMeetsSchema(obj, check.schema), ...errors];
             }
           }
         }
         else {
-          errors = [...checkObjectMeetsSchema(testObj, check.schema), ...errors];
+          errors = [...checkObjectMeetsSchema(testProp, check.schema), ...errors];
         }
       }
       return errors;
