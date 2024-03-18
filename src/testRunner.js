@@ -34,7 +34,7 @@ export async function runTest(test) {
   }
 
   // Fetch PDF export settings
-  const pdfExportSettingsResult = await getPdfExportSettings(test.pdfExportSettingsId, apikey, baseURL);
+  const pdfExportSettingsResult = (test.pdfExportSettingsXml) ? { isOK: true, response: test.pdfExportSettingsXml } : await getPdfExportSettings(test.pdfExportSettingsId, apikey, baseURL);
   if (!pdfExportSettingsResult.isOK) {
     throw pdfExportSettingsResult.error;
   }
