@@ -22,16 +22,17 @@ try {
   const testsJSON = JSON.parse(readFileSync(testPath, "utf-8"));
 
   tests = testsJSON.tests.map(test => {
-    const errors = isValidTest(test);
+
+    const { errors, validTest } = isValidTest(test);
 
     if (errors.length > 0) {
       for (const err of errors) {
-        console.error("Error: " + err);
+        console.error("ERROR: " + err);
       }
       process.exit(1);
     }
 
-    return setDefaults(test);
+    return validTest
   });
 
 }
@@ -56,96 +57,137 @@ catch (e) {
   process.exit(1);
 }
 
-function setDefaults(test) {
-
-  const testCopy = structuredClone(test);
-
-  if (typeof test.runAsync !== 'boolean') {
-    testCopy.runAsync = false;
-  }
-
-  return testCopy
-}
-
 function isValidTest(test) {
 
-  const getPropInObjectFromCheck = (object, check) => {
-    const checks = (check.or) ? check.or : [check];
-    return checks
-      .map((check) => ({ check, prop: check.prop.reduce((subObject, key) => Reflect.get(subObject, key), object) }))
-      .filter(x => x.prop != undefined)
-      .reduce((_, x) => x, { check: undefined, prop: undefined })
-  };
+  const addObjectToPath = (parentObject, keyPath, objectToAdd) => {
 
-  const getErrorMessage = (check, type) => {
-    const checks = (check.or) ? check.or : [check];
-    const msg = checks.reduce((str, check, idx) => str + (idx == 0 ? "" : " or ") + `${check.prop.join(".")} is not of type ${check.types.join(", ")}`, "");
-    return msg + ", instead got " + type;
-  }
-
-  const checkObjectMeetsSchema = (object, schema) => {
-
-    return schema.reduce((errors, check) => {
-      const { check: checkFiltered, prop: testProp } = getPropInObjectFromCheck(object, check);
-
-      if (!checkFiltered) {
-        return [getErrorMessage(check, "undefined"), ...errors];
+    keyPath.reduce((obj, key, idx) => {
+      if (idx == keyPath.length - 1) {
+        obj[key] = objectToAdd;
       }
-
-      check = checkFiltered;
-
-      const [isValidType, validType] = check.types.reduce(([isValid, validType], type) => {
-        if (isValid) return [isValid, validType];
-        return [typeof testProp === type, type]
-      }, [false, null]);
-
-      if (!isValidType) {
-        errors.push(getErrorMessage(check, typeof testProp));
-      }
-
-      if (isValidType && validType === "object" && check.schema) {
-        if (check.array) {
-          if (!Array.isArray(testProp)) {
-            errors.push(`${check.prop.join(".")} is not an array`);
-          }
-          else {
-            for (const obj of testProp) {
-              errors = [...checkObjectMeetsSchema(obj, check.schema), ...errors];
-            }
-          }
+      else {
+        if (obj[key] == null) {
+          obj[key] = {};
+          return obj[key];
         }
         else {
-          errors = [...checkObjectMeetsSchema(testProp, check.schema), ...errors];
+          return obj[key]
         }
       }
-      return errors;
-    }, []);
+
+      return obj
+
+    }, parentObject);
+
+    return parentObject;
   }
 
+  const checkObjectValidType = (check, object) => {
+    const objectType = typeof object;
+    const [isValid, validType] = check.types.reduce(([isValid, validType], type) => {
+      if (isValid) return [isValid, validType];
+      return [objectType === type, type]
+    }, [false, null]);
+
+    return {
+      objectType,
+      isValid,
+      validType
+    }
+  }
+
+  const getIn = (object, keys, _default) => keys.reduce((o, k) => o ? o[k] : o, object) ?? _default;
+
+  const getStrOfCheckFullPath = (check) => check.keyPath.join(".");
+
+  const getStrOfCheckTypes = (check, seperator = " , ") => check.types.join(seperator);
+
+  const joinPathsOfSchema = (schema, seperator) => schema.map(getStrOfCheckFullPath).join(seperator);
+
+  const getOrObject = (object, orSchema) => {
+    const keyValuePairs = orSchema
+      .map(check => ({ key: check.keyPath, value: getIn(object, check.keyPath, check.default ?? null), check }))
+      .filter(({ value }) => value != null);
+
+    switch (true) {
+      case (keyValuePairs.length > 1):
+        return { error: `You should only have one of ${joinPathsOfSchema(orSchema, " or ")}` };
+      case (keyValuePairs.length < 1):
+        return { error: `You are missing one of ${joinPathsOfSchema(orSchema, " or ")}` };
+      default:
+        const { check, value } = keyValuePairs[0];
+        return { check, object: value, }
+    }
+  }
+
+  const getObject = (object, check) => ({ check, object: getIn(object, check.keyPath, check.default ?? null) });
+
+  const getValidTest = (object, schema) => {
+    return schema.reduce(({ errors, validTest }, check) => {
+
+      const { error, object: objectToCheck, check: currentCheck } = check.or ? getOrObject(object, check.or) : getObject(object, check);
+
+      if (error) {
+        return { errors: [error, ...errors], validTest }
+      }
+
+      if (objectToCheck == null) {
+        return { errors: [`Missing value for ${getStrOfCheckFullPath(currentCheck)} which should include a value of ${getStrOfCheckTypes(currentCheck)}${(currentCheck.array) ? " which is an array" : ""}`, ...errors], validTest };
+      }
+
+      const { objectType, isValid, validType } = checkObjectValidType(currentCheck, objectToCheck);
+
+      if (!isValid) {
+        return {
+          errors: currentCheck.default ? errors : [`Type for ${getStrOfCheckFullPath(currentCheck)} is ${objectType} but expected types: ${getStrOfCheckTypes(currentCheck)}${(currentCheck.array) ? " which is an array" : ""}`, ...errors],
+          validTest: currentCheck.default ? addObjectToPath(validTest, currentCheck.keyPath, currentCheck.default) : validTest
+        }
+      }
+
+      switch (true) {
+        case (validType == "object" && currentCheck.schema != null && currentCheck.array == null): {
+          const { errors: newErrors, validTest: newTest } = getValidTest(objectToCheck, currentCheck.schema);
+          return { errors: [...(newErrors.map(e => e + ` in ${getStrOfCheckFullPath(currentCheck)}`)), ...errors], validTest: addObjectToPath(validTest, currentCheck.keyPath, newTest) }
+        }
+        case (validType == "object" && currentCheck.schema != null && currentCheck.array != null && !Array.isArray(objectToCheck)):
+          { return { errors: [`${getStrOfCheckFullPath(currentCheck)} is not an array`, ...errors], validTest } }
+        case (validType == "object" && currentCheck.schema != null && currentCheck.array != null && Array.isArray(objectToCheck)): {
+          const arrayOfObjects = objectToCheck;
+          const arrayOfTests = arrayOfObjects.map(obj => getValidTest(obj, currentCheck.schema));
+          const { errors: newErrors, array } = arrayOfTests.reduce((r, ct) => ({ errors: [...ct.errors, ...r.errors], array: [ct.validTest, ...r.array] }), { errors: [], array: [] })
+          return { errors: [...(newErrors.map(e => e + ` in ${getStrOfCheckFullPath(currentCheck)}`)), ...errors], validTest: addObjectToPath(validTest, currentCheck.keyPath, array) }
+        }
+        default:
+          return { errors, validTest: addObjectToPath(validTest, currentCheck.keyPath, objectToCheck) };
+      }
+    }, { errors: [], validTest: {} })
+  };
+
   const schema = [
-    { prop: ["name"], types: ["string"] },
+    { keyPath: ["name"], types: ["string"] },
     {
       or: [
-        { prop: ["pdfExportSettingsId"], types: ["string"] },
-        { prop: ["pdfExportSettingsXml"], types: ["string"] },
+        { keyPath: ["pdfExportSettingsId"], types: ["string"] },
+        { keyPath: ["pdfExportSettingsXml"], types: ["string"] },
       ]
     },
-    { prop: ["outputEachDocumentThisAmount"], types: ["number"] },
-    { prop: ["environment", "name"], types: ["string"] },
-    { prop: ["environment", "backofficeUrl"], types: ["string"] },
+    { keyPath: ["runAsync"], types: ["boolean"], default: true },
+    { keyPath: ["outputEachDocumentThisAmount"], types: ["number"] },
+    { keyPath: ["environment", "name"], types: ["string"] },
+    { keyPath: ["environment", "backofficeUrl"], types: ["string"] },
     {
-      prop: ["environment", "auth"], types: ["string", "object"], schema: [
-        { prop: ["userName"], types: ["string"] },
-        { prop: ["password"], types: ["string"] }
+      keyPath: ["environment", "auth"], types: ["string", "object"], schema: [
+        { keyPath: ["userName"], types: ["string"] },
+        { keyPath: ["password"], types: ["string"] }
       ]
     },
     {
-      prop: ["documents"], types: ["object"], array: true, schema: [
-        { prop: ["id"], types: ["string"] },
-        { prop: ["savedInEditor"], types: ["boolean"] },
+      keyPath: ["documents"], types: ["object"], array: true, schema: [
+        { keyPath: ["id"], types: ["string"] },
+        { keyPath: ["savedInEditor"], types: ["boolean"] },
       ]
     }
   ]
 
-  return checkObjectMeetsSchema(test, schema);
+  return getValidTest(test, schema);
 }
