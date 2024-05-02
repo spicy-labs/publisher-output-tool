@@ -76,6 +76,40 @@ export async function documentCreatePDF(id, exportSettings, apikey, url) {
   return result;
 }
 
+export async function documentCreateTempPDF(id, docXml, exportSettings, apikey, url) {
+  let result = {
+    response: "",
+    isOK: false,
+    error: "",
+  };
+  try {
+    const response = await fetch(
+      url + `/resources/documents/tempxml/pdf?itemID=${id}`,
+      {
+        method: "POST",
+        headers: {
+          "api-key": apikey,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ docXML: docXml, settingsXML: exportSettings }),
+      },
+    );
+
+    if (!response.ok) {
+      result.isOK = false;
+      result.error = Error(`DocumentCreatePDF failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
+    } else {
+      const responseJSON = jsonifyChiliResponse(await response.text());
+      result.isOK = true;
+      result.response = responseJSON.id;
+    }
+  } catch (err) {
+    result.isOK = false;
+    result.error = err;
+  }
+  return result;
+}
+
 export async function documentGetXML(id, apikey, url) {
   let result = {
     responseName: "",
