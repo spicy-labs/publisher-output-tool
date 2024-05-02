@@ -1,4 +1,4 @@
-import { generateAPIKey, documentCreatePDF, documentCreateTempPDF, documentSetSavedInEditor, documentSetVariableValues, taskGetStatus, getPdfExportSettings, documentGetXML } from './chili.js';
+import { generateAPIKey, documentCreateImages, documentCreateTempImages, documentCreatePDF, documentCreateTempPDF, documentSetSavedInEditor, documentSetVariableValues, taskGetStatus, getPdfExportSettings, documentGetXML } from './chili.js';
 import { jsonifyChiliResponse } from './utilities.js';
 import { hrtime } from 'node:process';
 
@@ -12,6 +12,7 @@ export async function startTests(tests, reporter) {
 }
 
 export async function runTest(test) {
+
   // Build base URL from backoffice URL
   const baseURL = buildBaseURL(test.environment.backofficeUrl);
 
@@ -58,8 +59,8 @@ export async function runTest(test) {
       }
       else {
         for (var x = 0; x < test.outputEachDocumentThisAmount; x++) {
-          console.log(`Running create PDF on ${doc.id}...`)
-
+          console.log(`Running create output on ${doc.id}...`)
+          console.log(doc.useTempXml ? "   Using tempxml" : "   Using id");
 
           if (doc.useTempXml) {
 
@@ -68,12 +69,14 @@ export async function runTest(test) {
               (doc.savedInEditor ? "savedInEditor=\"false\"" : "savedInEditor=\"true\""),
               (doc.savedInEditor ? "savedInEditor=\"true\"" : "savedInEditor=\"false\""))
 
-            const generatePDF = await documentCreateTempPDF(doc.id, docXml, pdfExportSettings, apikey, baseURL)
-            if (!generatePDF.isOK) {
-              console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generatePDF.error}`);
+            const generateOutput = (test.imageConversionProfileId == "") ?
+              await documentCreateTempPDF(doc.id, docXml, pdfExportSettings, apikey, baseURL) :
+              await documentCreateTempImages(doc.id, docXml, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
+            if (!generateOutput.isOK) {
+              console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generateOutput.error}`);
             }
             else {
-              tasks.push({ "docID": doc.id, "taskID": generatePDF.response });
+              tasks.push({ "docID": doc.id, "taskID": generateOutput.response });
             }
           }
           else {
@@ -88,12 +91,14 @@ export async function runTest(test) {
               }
             }
             // Check for createPDF endpoint failing, handle accordingly
-            const generatePDF = await documentCreatePDF(doc.id, pdfExportSettings, apikey, baseURL);
-            if (!generatePDF.isOK) {
-              console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generatePDF.error}`);
+            const generateOutput = (test.imageConversionProfileId == "") ?
+              await documentCreatePDF(doc.id, pdfExportSettings, apikey, baseURL) :
+              await documentCreateImages(doc.id, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
+            if (!generateOutput.isOK) {
+              console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generateOutput.error}`);
             }
             else {
-              tasks.push({ "docID": doc.id, "taskID": generatePDF.response });
+              tasks.push({ "docID": doc.id, "taskID": generateOutput.response });
             }
           }
         }
@@ -153,9 +158,10 @@ export async function runTest(test) {
       }
       else {
         for (var x = 0; x < test.outputEachDocumentThisAmount; x++) {
-          console.log(`Running create PDF on ${doc.id}...`)
+          console.log(`Running output on ${doc.id}...`)
+            (doc.useTempXml) ? console.log("   Using tempxml") : console.log("   Using id");
 
-          let generatePDF;
+          let generateOutput;
           let task;
           let start;
 
@@ -166,7 +172,9 @@ export async function runTest(test) {
               (doc.savedInEditor ? "savedInEditor=\"false\"" : "savedInEditor=\"true\""),
               (doc.savedInEditor ? "savedInEditor=\"true\"" : "savedInEditor=\"false\""))
             start = hrtime.bigint();
-            generatePDF = await documentCreateTempPDF(doc.id, docXml, pdfExportSettings, apikey, baseURL)
+            generateOutput = (test.imageConversionProfileId == "") ?
+              await documentCreateTempPDF(doc.id, docXml, pdfExportSettings, apikey, baseURL) :
+              await documentCreateTempImages(doc.id, docXml, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
           }
           else {
 
@@ -181,13 +189,15 @@ export async function runTest(test) {
             }
 
             start = hrtime.bigint();
-            generatePDF = await documentCreatePDF(doc.id, pdfExportSettings, apikey, baseURL);
+            generateOutput = (test.imageConversionProfileId == "") ?
+              await documentCreatePDF(doc.id, pdfExportSettings, apikey, baseURL) :
+              await documentCreateImages(doc.id, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
           }
-          if (!generatePDF.isOK) {
-            console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generatePDF.error}`);
+          if (!generateOutput.isOK) {
+            console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generateOutput.error}`);
           }
           else {
-            task = { "docID": doc.id, "taskID": generatePDF.response };
+            task = { "docID": doc.id, "taskID": generateOutput.response };
           }
           // Poll task until finished
           let taskRunning = true;
