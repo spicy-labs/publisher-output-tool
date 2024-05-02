@@ -112,6 +112,7 @@ export function isValidTest(test) {
         { keyPath: ["pdfExportSettingsXml"], types: ["string"] },
       ]
     },
+    { keyPath: ["imageConversionProfileId"], types: ["string"], default: "" },
     { keyPath: ["runAsync"], types: ["boolean"], default: true },
     { keyPath: ["outputEachDocumentThisAmount"], types: ["number"] },
     { keyPath: ["environment", "name"], types: ["string"] },
