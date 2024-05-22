@@ -1,4 +1,4 @@
-import { generateAPIKey, documentCreatePDF, documentSetSavedInEditor, documentSetVariableValues, taskGetStatus, getPdfExportSettings, documentGetXML } from './chili.js';
+import { generateAPIKey, documentCreateImages, documentCreateTempImages, documentCreatePDF, documentCreateTempPDF, documentSetSavedInEditor, documentSetVariableValues, taskGetStatus, getPdfExportSettings, documentGetXML } from './chili.js';
 import { jsonifyChiliResponse } from './utilities.js';
 import { hrtime } from 'node:process';
 
@@ -12,6 +12,7 @@ export async function startTests(tests, reporter) {
 }
 
 export async function runTest(test) {
+
   // Build base URL from backoffice URL
   const baseURL = buildBaseURL(test.environment.backofficeUrl);
 
@@ -50,30 +51,55 @@ export async function runTest(test) {
     // Start document generations
     const start = hrtime.bigint();
     for (var i = 0; i < test.documents.length; i++) {
+      const doc = test.documents[i];
       // Check if the document exists or not, this also has the document name and XML stored in it so can be used to add functionality down the line
-      const getDocXMLResult = await documentGetXML(test.documents[i].id, apikey, baseURL);
+      const getDocXMLResult = await documentGetXML(doc.id, apikey, baseURL);
       if (!getDocXMLResult.isOK) {
-        console.error(`Aborting tests for doc ${test.documents[i].id} with message: ${getDocXMLResult.error}`);
+        console.error(`Aborting tests for doc ${doc.id} with message: ${getDocXMLResult.error}`);
       }
       else {
         for (var x = 0; x < test.outputEachDocumentThisAmount; x++) {
-          console.log(`Running create PDF on ${test.documents[i].id}...`)
-          // Check if savedInEditor needs to be set
-          if (!test.documents[i].savedInEditor) {
-            const savedInEditorResult = await documentSetSavedInEditor(test.documents[i].id, false, apikey, baseURL);
-            // Continue with test if setting savedInEditor fails for whatever reason, log in console
-            if (!savedInEditorResult.isOK) {
-              // This should only actually fail if either CHILI is wholly down or if the provided PDF settings are no good
-              console.error(`Failed to set savedInEditor for output attempt ${x + 1} on doc ${test.documents[i].id}: ${savedInEditorResult.error}`);
+          console.log(`Running create output on ${doc.id}...`)
+          console.log(doc.useTempXml ? "   Using tempxml" : "   Using id");
+
+          if (doc.useTempXml) {
+
+            // Dirty, but maybe not best way
+            const docXml = getDocXMLResult.responseXML.replace(
+              (doc.savedInEditor ? "savedInEditor=\"false\"" : "savedInEditor=\"true\""),
+              (doc.savedInEditor ? "savedInEditor=\"true\"" : "savedInEditor=\"false\""))
+
+            const generateOutput = (test.imageConversionProfileId == "") ?
+              await documentCreateTempPDF(doc.id, docXml, pdfExportSettings, apikey, baseURL) :
+              await documentCreateTempImages(doc.id, docXml, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
+            if (!generateOutput.isOK) {
+              console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generateOutput.error}`);
+            }
+            else {
+              tasks.push({ "docID": doc.id, "taskID": generateOutput.response });
             }
           }
-          // Check for createPDF endpoint failing, handle accordingly
-          const generatePDF = await documentCreatePDF(test.documents[i].id, pdfExportSettings, apikey, baseURL);
-          if (!generatePDF.isOK) {
-            console.error(`Output attempt ${x + 1} on doc ${test.documents[i].id} failed: ${generatePDF.error}`);
-          }
           else {
-            tasks.push({ "docID": test.documents[i].id, "taskID": generatePDF.response });
+
+            // Check if savedInEditor needs to be set
+            if (!doc.savedInEditor) {
+              const savedInEditorResult = await documentSetSavedInEditor(doc.id, false, apikey, baseURL);
+              // Continue with test if setting savedInEditor fails for whatever reason, log in console
+              if (!savedInEditorResult.isOK) {
+                // This should only actually fail if either CHILI is wholly down or if the provided PDF settings are no good
+                console.error(`Failed to set savedInEditor for output attempt ${x + 1} on doc ${doc.id}: ${savedInEditorResult.error}`);
+              }
+            }
+            // Check for createPDF endpoint failing, handle accordingly
+            const generateOutput = (test.imageConversionProfileId == "") ?
+              await documentCreatePDF(doc.id, pdfExportSettings, apikey, baseURL) :
+              await documentCreateImages(doc.id, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
+            if (!generateOutput.isOK) {
+              console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generateOutput.error}`);
+            }
+            else {
+              tasks.push({ "docID": doc.id, "taskID": generateOutput.response });
+            }
           }
         }
       }
@@ -123,31 +149,55 @@ export async function runTest(test) {
   // Sync run
   else {
     for (var i = 0; i < test.documents.length; i++) {
+
+      const doc = test.documents[i];
       // Check if the document exists or not, this also has the document name and XML stored in it so can be used to add functionality down the line
-      const getDocXMLResult = await documentGetXML(test.documents[i].id, apikey, baseURL);
+      const getDocXMLResult = await documentGetXML(doc.id, apikey, baseURL);
       if (!getDocXMLResult.isOK) {
-        console.error(`Aborting tests for doc ${test.documents[i].id} with message: ${getDocXMLResult.error}`);
+        console.error(`Aborting tests for doc ${doc.id} with message: ${getDocXMLResult.error}`);
       }
       else {
         for (var x = 0; x < test.outputEachDocumentThisAmount; x++) {
-          console.log(`Running create PDF on ${test.documents[i].id}...`)
-          // Check if savedInEditor needs to be set
-          if (!test.documents[i].savedInEditor) {
-            const savedInEditorResult = await documentSetSavedInEditor(test.documents[i].id, false, apikey, baseURL);
-            // Continue with test if setting savedInEditor fails for whatever reason, log in console
-            if (!savedInEditorResult.isOK) {
-              // This should only actually fail if either CHILI is wholly down or if the provided PDF settings are no good
-              console.error(`Failed to set savedInEditor for output attempt ${x + 1} on doc ${test.documents[i].id}: ${savedInEditorResult.error}`);
-            }
-          }
-          const start = hrtime.bigint();
-          const generatePDF = await documentCreatePDF(test.documents[i].id, pdfExportSettings, apikey, baseURL);
+          console.log(`Running output on ${doc.id}...`)
+            (doc.useTempXml) ? console.log("   Using tempxml") : console.log("   Using id");
+
+          let generateOutput;
           let task;
-          if (!generatePDF.isOK) {
-            console.error(`Output attempt ${x + 1} on doc ${test.documents[i].id} failed: ${generatePDF.error}`);
+          let start;
+
+          if (doc.useTempXml) {
+
+            // Dirty, but maybe not best way
+            const docXml = getDocXMLResult.responseXML.replace(
+              (doc.savedInEditor ? "savedInEditor=\"false\"" : "savedInEditor=\"true\""),
+              (doc.savedInEditor ? "savedInEditor=\"true\"" : "savedInEditor=\"false\""))
+            start = hrtime.bigint();
+            generateOutput = (test.imageConversionProfileId == "") ?
+              await documentCreateTempPDF(doc.id, docXml, pdfExportSettings, apikey, baseURL) :
+              await documentCreateTempImages(doc.id, docXml, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
           }
           else {
-            task = { "docID": test.documents[i].id, "taskID": generatePDF.response };
+
+            // Check if savedInEditor needs to be set
+            if (!doc.savedInEditor) {
+              const savedInEditorResult = await documentSetSavedInEditor(doc.id, false, apikey, baseURL);
+              // Continue with test if setting savedInEditor fails for whatever reason, log in console
+              if (!savedInEditorResult.isOK) {
+                // This should only actually fail if either CHILI is wholly down or if the provided PDF settings are no good
+                console.error(`Failed to set savedInEditor for output attempt ${x + 1} on doc ${doc.id}: ${savedInEditorResult.error}`);
+              }
+            }
+
+            start = hrtime.bigint();
+            generateOutput = (test.imageConversionProfileId == "") ?
+              await documentCreatePDF(doc.id, pdfExportSettings, apikey, baseURL) :
+              await documentCreateImages(doc.id, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
+          }
+          if (!generateOutput.isOK) {
+            console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generateOutput.error}`);
+          }
+          else {
+            task = { "docID": doc.id, "taskID": generateOutput.response };
           }
           // Poll task until finished
           let taskRunning = true;
