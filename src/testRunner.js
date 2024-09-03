@@ -1,6 +1,8 @@
-import { generateAPIKey, documentCreateImages, documentCreateTempImages, documentCreatePDF, documentCreateTempPDF, documentSetSavedInEditor, documentSetVariableValues, taskGetStatus, getPdfExportSettings, documentGetXML } from './chili.js';
+import { writeFileSync } from 'node:fs';
+import { generateAPIKey, documentCreateImages, documentCreateTempImages, documentCreatePDF, documentCreateTempPDF, documentSetSavedInEditor, documentSetVariableValues, taskGetStatus, getPdfExportSettings, documentGetXML, documentCopy } from './chili.js';
 import { jsonifyChiliResponse } from './utilities.js';
 import { hrtime } from 'node:process';
+import { nanoid } from 'nanoid';
 
 export async function startTests(tests, reporter) {
   for (var i = 0; i < tests.length; i++) {
@@ -81,24 +83,27 @@ export async function runTest(test) {
           }
           else {
 
+            const docId = (doc.copyPath) ? (await documentCopy(doc.id, doc.copyPath, apikey, baseURL)).response : doc.id;
+
             // Check if savedInEditor needs to be set
             if (!doc.savedInEditor) {
-              const savedInEditorResult = await documentSetSavedInEditor(doc.id, false, apikey, baseURL);
+              const savedInEditorResult = await documentSetSavedInEditor(docId, false, apikey, baseURL);
               // Continue with test if setting savedInEditor fails for whatever reason, log in console
               if (!savedInEditorResult.isOK) {
                 // This should only actually fail if either CHILI is wholly down or if the provided PDF settings are no good
-                console.error(`Failed to set savedInEditor for output attempt ${x + 1} on doc ${doc.id}: ${savedInEditorResult.error}`);
+                console.error(`Failed to set savedInEditor for output attempt ${x + 1} on doc ${docId}: ${savedInEditorResult.error}`);
               }
             }
+
             // Check for createPDF endpoint failing, handle accordingly
             const generateOutput = (test.imageConversionProfileId == "") ?
-              await documentCreatePDF(doc.id, pdfExportSettings, apikey, baseURL) :
-              await documentCreateImages(doc.id, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
+              await documentCreatePDF(docId, pdfExportSettings, apikey, baseURL) :
+              await documentCreateImages(docId, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
             if (!generateOutput.isOK) {
               console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generateOutput.error}`);
             }
             else {
-              tasks.push({ "docID": doc.id, "taskID": generateOutput.response });
+              tasks.push({ "docID": docId, "taskID": generateOutput.response });
             }
           }
         }
@@ -242,6 +247,23 @@ export async function runTest(test) {
       }
     }
   }
+
+  if (test.downloadOutput) {
+    console.log(`Downloading results`);
+
+    for (const result of results) {
+      if (!result.succeeded) continue;
+
+      console.log(result)
+
+      const response = await fetch(result.result);
+
+      writeFileSync(`./Results/${nanoid()}.pdf`, (await response.arrayBuffer()));
+    }
+
+  }
+
+  console.log(`Failed output: ${results.filter(r => !r.succeeded).length}`);
 
   console.log(`End test ${test.name}.\n`);
   return results;
