@@ -1,4 +1,5 @@
 import { jsonifyChiliResponse } from "./utilities.js";
+import { nanoid } from "nanoid";
 
 //Generate API key
 export async function generateAPIKey(user, pass, environment, url) {
@@ -167,6 +168,39 @@ export async function documentCreateTempPDF(id, docXml, exportSettings, apikey, 
     if (!response.ok) {
       result.isOK = false;
       result.error = Error(`DocumentCreatePDF failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
+    } else {
+      const responseJSON = jsonifyChiliResponse(await response.text());
+      result.isOK = true;
+      result.response = responseJSON.id;
+    }
+  } catch (err) {
+    result.isOK = false;
+    result.error = err;
+  }
+  return result;
+}
+
+
+export async function documentCopy(id, path, apikey, url) {
+  let result = {
+    response: "",
+    isOK: false,
+    error: "",
+  };
+  try {
+    const response = await fetch(
+      url + `/resources/documents/items/${id}/copy?newName=${nanoid()}&folderPath=${path}`,
+      {
+        method: "POST",
+        headers: {
+          "api-key": apikey,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      result.isOK = false;
+      result.error = Error(`DocumentCopy failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
     } else {
       const responseJSON = jsonifyChiliResponse(await response.text());
       result.isOK = true;
