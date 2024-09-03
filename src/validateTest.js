@@ -112,6 +112,7 @@ export function isValidTest(test) {
         { keyPath: ["pdfExportSettingsXml"], types: ["string"] },
       ]
     },
+    { keyPath: ["downloadOutput"], types: ["boolean"], default: false },
     { keyPath: ["imageConversionProfileId"], types: ["string"], default: "" },
     { keyPath: ["runAsync"], types: ["boolean"], default: true },
     { keyPath: ["outputEachDocumentThisAmount"], types: ["number"] },
@@ -127,6 +128,7 @@ export function isValidTest(test) {
       keyPath: ["documents"], types: ["object"], array: true, schema: [
         { keyPath: ["id"], types: ["string"] },
         { keyPath: ["savedInEditor"], types: ["boolean"] },
+        { keyPath: ["copyPath"], types: ["string"], default: null },
         { keyPath: ["useTempXml"], types: ["boolean"], default: false },
       ]
     }
