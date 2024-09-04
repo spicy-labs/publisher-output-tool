@@ -128,7 +128,7 @@ export function isValidTest(test) {
       keyPath: ["documents"], types: ["object"], array: true, schema: [
         { keyPath: ["id"], types: ["string"] },
         { keyPath: ["savedInEditor"], types: ["boolean"] },
-        { keyPath: ["copyPath"], types: ["string"], default: null },
+        { keyPath: ["copyPath"], types: ["string"], default: "" },
         { keyPath: ["useTempXml"], types: ["boolean"], default: false },
       ]
     }

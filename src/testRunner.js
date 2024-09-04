@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { generateAPIKey, documentCreateImages, documentCreateTempImages, documentCreatePDF, documentCreateTempPDF, documentSetSavedInEditor, documentSetVariableValues, taskGetStatus, getPdfExportSettings, documentGetXML, documentCopy } from './chili.js';
 import { jsonifyChiliResponse } from './utilities.js';
 import { hrtime } from 'node:process';
@@ -14,6 +14,7 @@ export async function startTests(tests, reporter) {
 }
 
 export async function runTest(test) {
+
 
   // Build base URL from backoffice URL
   const baseURL = buildBaseURL(test.environment.backofficeUrl);
@@ -36,6 +37,22 @@ export async function runTest(test) {
     apikey = apikeyResult.response;
   }
 
+
+  const tasks = getFileContentsOrEmptyArray("./tasks.json");
+  let results = [];
+
+  if (tasks.length > 0) {
+
+    const oldTasksFound = tasks.filter(task => task.baseURL == baseURL && task.environmentName == test.environment.name);
+
+    console.log(`Found ${oldTasksFound.length} previous tasks... going to process them`);
+
+    const updateResults = await checkTasks(oldTasksFound, apikey, baseURL, hrtime.bigint());
+
+    results = [...results, ...updateResults];
+  }
+
+
   // Fetch PDF export settings
   const pdfExportSettingsResult = (test.pdfExportSettingsXml) ? { isOK: true, response: test.pdfExportSettingsXml } : await getPdfExportSettings(test.pdfExportSettingsId, apikey, baseURL);
   if (!pdfExportSettingsResult.isOK) {
@@ -43,23 +60,26 @@ export async function runTest(test) {
   }
   const pdfExportSettings = pdfExportSettingsResult.response;
 
-  let results = [];
 
   console.log(`Starting test ${test.name}...`);
 
+
   // Check if async or not
   if (test.runAsync) {
-    let tasks = [];
+
     // Start document generations
     const start = hrtime.bigint();
     for (var i = 0; i < test.documents.length; i++) {
       const doc = test.documents[i];
+      const docsRun = [];
       // Check if the document exists or not, this also has the document name and XML stored in it so can be used to add functionality down the line
       const getDocXMLResult = await documentGetXML(doc.id, apikey, baseURL);
       if (!getDocXMLResult.isOK) {
         console.error(`Aborting tests for doc ${doc.id} with message: ${getDocXMLResult.error}`);
       }
       else {
+
+
         for (var x = 0; x < test.outputEachDocumentThisAmount; x++) {
           console.log(`Running create output on ${doc.id}...`)
           console.log(doc.useTempXml ? "   Using tempxml" : "   Using id");
@@ -78,12 +98,14 @@ export async function runTest(test) {
               console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generateOutput.error}`);
             }
             else {
-              tasks.push({ "docID": doc.id, "taskID": generateOutput.response });
+              tasks.push({ "docID": doc.id, "taskID": generateOutput.response, environmentName: test.environment.name, baseURL });
             }
           }
           else {
 
-            const docId = (doc.copyPath) ? (await documentCopy(doc.id, doc.copyPath, apikey, baseURL)).response : doc.id;
+            const docId = (doc.copyPath != "") ? (await documentCopy(doc.id, doc.copyPath, apikey, baseURL)).response : doc.id;
+
+            docsRun.push(docId);
 
             // Check if savedInEditor needs to be set
             if (!doc.savedInEditor) {
@@ -95,61 +117,32 @@ export async function runTest(test) {
               }
             }
 
-            // Check for createPDF endpoint failing, handle accordingly
-            const generateOutput = (test.imageConversionProfileId == "") ?
-              await documentCreatePDF(docId, pdfExportSettings, apikey, baseURL) :
-              await documentCreateImages(docId, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
-            if (!generateOutput.isOK) {
-              console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generateOutput.error}`);
-            }
-            else {
-              tasks.push({ "docID": docId, "taskID": generateOutput.response });
-            }
           }
         }
       }
-    }
-    // Loop through each task, check if it's done, remove from list if finished
-    while (tasks.length != 0) {
-      let taskChecks = tasks.map(async (task) => {
-        const taskStatusResult = await taskGetStatus(task.taskID, apikey, baseURL);
-        task.taskPollFailures = (task.taskPollFailures) ? task.taskPollFailures + 1 : 0;
-        if (!taskStatusResult.isOK) {
-          console.error(`Failed to poll task ${task.taskID} for doc ${task.docID}: ${taskStatusResult.error}`);
-          task.taskPollFailures++;
-          // Pop task from queue if more than 20 failures on API call
-          if (task.taskPollFailures > 20) {
-            tasks.splice(tasks.indexOf(task), 1);
-            console.error(`Failed to poll task ${task.taskID} more than 20 times, aborting task`);
-          }
+
+      const generateOutput = docsRun.map(docId => (test.imageConversionProfileId == "") ?
+        documentCreatePDF(docId, pdfExportSettings, apikey, baseURL) :
+        documentCreateImages(docId, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL));
+
+      const generateOutputFinished = await Promise.all(generateOutput);
+
+      generateOutputFinished.forEach(o => {
+
+        if (!o.isOK) {
+          console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${o.error}`);
         }
         else {
-          const taskStatus = taskStatusResult.response;
-          // Check if finished
-          if (taskStatus.finished === "True") {
-            // Check for success
-            if (taskStatus.succeeded === "True") {
-              // Check if the URL is empty
-              //  - programTimeToComplete is recorded in nanoseconds now, it's probably easier to just convert to milliseconds in the reporter
-              if (jsonifyChiliResponse(taskStatus.result).url === '') {
-                results.push({ "documentID": task.docID, "succeeded": false, "result": "Task marked as succeeded, but no result URL returned", "taskTimeToComplete": taskStatus.totalTime, "programTimeToComplete": `${(hrtime.bigint() - start)}` });
-              }
-              else {
-                results.push({ "documentID": task.docID, "succeeded": true, "result": jsonifyChiliResponse(taskStatus.result).url, "taskTimeToComplete": taskStatus.totalTime, "programTimeToComplete": `${(hrtime.bigint() - start)}` });
-              }
-            }
-            else {
-              results.push({ "documentID": task.docID, "succeeded": false, "result": `Task failed with error message: ${taskStatus.errorMessage}`, "taskTimeToComplete": taskStatus.totalTime, "programTimeToComplete": `${(hrtime.bigint() - start)}` });
-            }
-            tasks.splice(tasks.indexOf(task), 1);
-          }
+          tasks.push({ "docID": o.docId, "taskID": o.response, environmentName: test.environment.name, baseURL });
         }
       })
-      // Wait half a second between each run
-      await Promise.all(taskChecks);
 
-      await new Promise(r => setTimeout(r, 500));
+      writeFileSync("./tasks.json", JSON.stringify(tasks));
     }
+    // Loop through each task, check if it's done, remove from list if finished
+    const newResults = await checkTasks(tasks, apikey, baseURL, start);
+
+    results = [...results, ...newResults];
   }
   // Sync run
   else {
@@ -194,9 +187,11 @@ export async function runTest(test) {
             }
 
             start = hrtime.bigint();
-            generateOutput = (test.imageConversionProfileId == "") ?
-              await documentCreatePDF(doc.id, pdfExportSettings, apikey, baseURL) :
-              await documentCreateImages(doc.id, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
+            generateOutput =
+
+              (test.imageConversionProfileId == "") ?
+                await documentCreatePDF(doc.id, pdfExportSettings, apikey, baseURL) :
+                await documentCreateImages(doc.id, pdfExportSettings, test.imageConversionProfileId, apikey, baseURL);
           }
           if (!generateOutput.isOK) {
             console.error(`Output attempt ${x + 1} on doc ${doc.id} failed: ${generateOutput.error}`);
@@ -248,26 +243,65 @@ export async function runTest(test) {
     }
   }
 
-  if (test.downloadOutput) {
-    console.log(`Downloading results`);
-
-    for (const result of results) {
-      if (!result.succeeded) continue;
-
-      console.log(result)
-
-      const response = await fetch(result.result);
-
-      writeFileSync(`./Results/${nanoid()}.pdf`, (await response.arrayBuffer()));
-    }
-
-  }
 
   console.log(`Failed output: ${results.filter(r => !r.succeeded).length}`);
 
   console.log(`End test ${test.name}.\n`);
   return results;
 
+}
+
+async function checkTasks(tasks, apikey, baseURL, start) {
+
+  const results = [];
+
+  while (tasks.length != 0) {
+    let taskChecks = tasks.map(async (task) => {
+      const taskStatusResult = await taskGetStatus(task.taskID, apikey, baseURL);
+      task.taskPollFailures = (task.taskPollFailures) ? task.taskPollFailures : 0;
+      if (!taskStatusResult.isOK) {
+        console.error(`Failed to poll task ${task.taskID} for doc ${task.docID}: ${taskStatusResult.error}`);
+        task.taskPollFailures++;
+        // Pop task from queue if more than 20 failures on API call
+        if (task.taskPollFailures > 20) {
+          tasks.splice(tasks.indexOf(task), 1);
+          console.error(`Failed to poll task ${task.taskID} more than 20 times, aborting task`);
+        }
+      }
+      else {
+        const taskStatus = taskStatusResult.response;
+        // Check if finished
+        if (taskStatus.finished === "True") {
+          // Check for success
+          if (taskStatus.succeeded === "True") {
+            // Check if the URL is empty
+            //  - programTimeToComplete is recorded in nanoseconds now, it's probably easier to just convert to milliseconds in the reporter
+            if (jsonifyChiliResponse(taskStatus.result).url === '') {
+              results.push({ "documentID": task.docID, "taskID": taskStatus.id, "succeeded": false, "result": "Task marked as succeeded, but no result URL returned", "taskTimeToComplete": taskStatus.totalTime, "programTimeToComplete": `${(hrtime.bigint() - start)}` });
+            }
+            else {
+              results.push({ "documentID": task.docID, "taskID": taskStatus.id, "succeeded": true, "result": jsonifyChiliResponse(taskStatus.result).url, "taskTimeToComplete": taskStatus.totalTime, "programTimeToComplete": `${(hrtime.bigint() - start)}` });
+
+              const response = await fetch(jsonifyChiliResponse(taskStatus.result).url);
+
+              writeFileSync(`./Results/${nanoid()}.pdf`, (await response.arrayBuffer()));
+            }
+          }
+          else {
+            results.push({ "documentID": task.docID, "taskID": taskStatus.id, "succeeded": false, "result": `Task failed with error message: ${taskStatus.errorMessage}`, "taskTimeToComplete": taskStatus.totalTime, "programTimeToComplete": `${(hrtime.bigint() - start)}` });
+          }
+          tasks.splice(tasks.indexOf(task), 1);
+        }
+      }
+    })
+    // Wait half a second between each run
+    await Promise.all(taskChecks);
+    writeFileSync("./tasks.json", JSON.stringify(tasks));
+
+    await new Promise(r => setTimeout(r, 30));
+  }
+
+  return results;
 }
 
 function buildBaseURL(inputUrl) {
@@ -290,5 +324,19 @@ function buildBaseURL(inputUrl) {
   } catch (error) {
     console.error('Invalid URL:', error.message);
     return null;
+  }
+}
+
+function getFileContentsOrEmptyArray(filePath) {
+  try {
+    if (existsSync(filePath)) {
+      const fileContents = readFileSync(filePath, 'utf8');
+      return JSON.parse(fileContents); // Assuming the file contains JSON data
+    } else {
+      return [];
+    }
+  } catch (error) {
+    console.error("Error reading the file:", error);
+    return [];
   }
 }

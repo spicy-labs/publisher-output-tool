@@ -117,6 +117,7 @@ export async function documentCreatePDF(id, exportSettings, apikey, url) {
     response: "",
     isOK: false,
     error: "",
+    docId: id,
   };
   try {
     const response = await fetch(
@@ -151,6 +152,7 @@ export async function documentCreateTempPDF(id, docXml, exportSettings, apikey, 
     response: "",
     isOK: false,
     error: "",
+    docId: id,
   };
   try {
     const response = await fetch(
