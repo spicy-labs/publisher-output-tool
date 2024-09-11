@@ -9,7 +9,7 @@ const fileName = "publisher-output-tool";
   await bundle()
 
   if (os.platform() == "win32") {
-    await windowsBuild(fileName);
+    await macBuild(fileName);
     await cleanUp(`${fileName}.exe`);
   }
   else {
@@ -46,6 +46,7 @@ async function bundle() {
   if (error) process.exit(1);
   console.log("bundle javascript");
 }
+
 
 async function windowsBuild(fileName) {
 
