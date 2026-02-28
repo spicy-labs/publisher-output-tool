@@ -295,6 +295,104 @@ export async function taskGetStatus(taskID, apikey, url) {
   return result;
 }
 
+//Download original document XML
+export async function documentDownloadOriginal(id, apikey, url) {
+  let result = {
+    response: "",
+    isOK: false,
+    error: "",
+  };
+  try {
+    const response = await fetch(
+      url + `/resources/Documents/download?type=original&id=${id}`,
+      {
+        method: "GET",
+        headers: {
+          "api-key": apikey,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      result.isOK = false;
+      result.error = Error(`DocumentDownloadOriginal failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
+    } else {
+      result.isOK = true;
+      result.response = await response.text();
+    }
+  } catch (err) {
+    result.isOK = false;
+    result.error = err;
+  }
+  return result;
+}
+
+//Convert xlsx to datasource XML
+export async function datasourceConvertXlsx(dataSourceID, guid, apikey, url) {
+  let result = {
+    response: "",
+    isOK: false,
+    error: "",
+  };
+  try {
+    const response = await fetch(
+      url + `/settings/datasources/${dataSourceID}/xmlconverter?fileExtension=xlsx`,
+      {
+        method: "PUT",
+        headers: {
+          "api-key": apikey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ fileDataOrPath: guid }),
+      },
+    );
+
+    if (!response.ok) {
+      result.isOK = false;
+      result.error = Error(`DatasourceConvertXlsx failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
+    } else {
+      result.isOK = true;
+      result.response = await response.text();
+    }
+  } catch (err) {
+    result.isOK = false;
+    result.error = err;
+  }
+  return result;
+}
+
+//Set datasource on document
+export async function documentSetDatasource(documentId, datasourceXML, apikey, url) {
+  let result = {
+    isOK: false,
+    error: "",
+  };
+  try {
+    const response = await fetch(
+      url + `/resources/documents/${documentId}/datasource`,
+      {
+        method: "POST",
+        headers: {
+          "api-key": apikey,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ datasourceXML }),
+      },
+    );
+
+    if (!response.ok) {
+      result.isOK = false;
+      result.error = Error(`DocumentSetDatasource failed with message: ${response.status} ${response.statusText}, ${await response.text()}`);
+    } else {
+      result.isOK = true;
+    }
+  } catch (err) {
+    result.isOK = false;
+    result.error = err;
+  }
+  return result;
+}
+
 //GetPdfExportSettings
 export async function getPdfExportSettings(id, apikey, url) {
   let result = {
