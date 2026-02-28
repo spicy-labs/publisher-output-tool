@@ -8,7 +8,7 @@ Security reviews will flag that the CHILI Publish API key is stored in a `docume
 
 ### 1. Network Interception — Not Applicable Over HTTPS
 
-The cookie is only sent automatically to the app's own origin server. That server is a static file server that does not read or process cookies (`server.js`). The API key is sent to the CHILI API via explicit `fetch()` calls in JavaScript, not via cookie headers.
+The cookie is only sent automatically to the app's own origin server. That server is a static file server that does not read or process cookies (`server.bun.js`). The API key is sent to the CHILI API via explicit `fetch()` calls in JavaScript, not via cookie headers.
 
 When served over HTTPS (required for production), cookie contents cannot be sniffed in transit. Adding the `Secure` flag is good practice to prevent fallback over HTTP, but does not address an exploitable vulnerability.
 
@@ -24,7 +24,7 @@ A stolen API key grants access to the CHILI Publish environment regardless of ho
 
 ### Supporting Evidence
 
-- **Server ignores cookies**: `server.js` is a static file server with no cookie parsing or session handling.
+- **Server ignores cookies**: `server.bun.js` is a static file server with no cookie parsing or session handling.
 - **API key sent via fetch, not cookies**: All CHILI API calls in `frontend/chili.ts` pass the API key as a request parameter, not via cookie headers. The cookie is used purely as a client-side storage mechanism.
 - **No XSS surface**: The application does not render untrusted HTML content.
 - **Browser compromise is game over regardless**: A compromised browser environment can read any client-side storage mechanism and intercept any network request.

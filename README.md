@@ -1,18 +1,41 @@
-# Project Description
-The Publisher Output Tool is a software tool created to test output of Publisher. It was made with the help of CHILI publish employees but is maintained by the community under the Spicy Labs organization.
+# Publisher Output Tool
 
-You can get this tool from the [Releases](https://github.com/spicy-labs/publisher-output-tool/releases) page on its GitHub site. To use it, you write instructions in a file named `tests.json`, and the tool will tell you how long output took, and if there are any issues with the output.
+The Publisher Output Tool is a software tool created to test output of Publisher. It was made with the help of CHILI publish employees but is maintained by the community under the Spicy Labs organization.
 
 This project is still being developed (WIP) and might never be feature complete, especially with focus being shifted towards GraFx Studio. Nonetheless, the creators hope that this tool will act as a way to facilitate communication within the CHILI community around output performance and stability.
 
 <br/>
 
-# Usage
+# Web Interface (Recommended)
+
+The easiest way to use the Publisher Output Tool is through the web interface. It's designed for everyone — no terminal or technical setup required.
+
+**Use it now:** [spicy-labs.com/publisher-output-tool](http://spicy-labs.com/publisher-output-tool/)
+
+**Video guide:** [Watch on YouTube](https://youtu.be/W3T_UYmH5Sw)
+
+The web interface runs 100% in your browser. All CHILI API calls are made directly from your local browser — nothing is sent to a third-party server.
+
+### Run Locally
+
+If you prefer to run the web interface locally:
+
+1. Install [Bun](https://bun.sh/docs/installation)
+2. Clone this repository
+3. Run `bun install`
+4. Run `bun run start`
+
+<br/>
+
+# CLI Usage
+
+A command-line interface is also available if you prefer working in a terminal.
+
 1. **Get the Tool:** Download it from the [Releases](https://github.com/spicy-labs/publisher-output-tool/releases) page on GitHub for your computer, and unzip the file.
 2. **Prepare Test Instructions:** Create a tests.json file in the same folder as the downloaded tool.
 3. **Write Your Tests:** Fill in the `tests.json` file with the tests you want to run. See below for more details.
 4. **Open Terminal or PowerShell:** Get ready to run the tool through the shell.
-6. **Run the Tool:**
+5. **Run the Tool:**
     - Change directory (`cd`) to where the tool was downloaded
     - If you are on Mac or Linux, you need to use `sudo chmod 755 ./publisher-output-tool` to give yourself file permissions.
     - Then start it by typing `./publisher-output-tool` on Mac/Linux or `./publisher-output-tool.exe` on Windows.
@@ -47,7 +70,7 @@ The JSON file should be set up as follows:
 ```
 The JSON consists of a list of **tests** at the top level, each item added to **tests** will designate a separate test to be run with a separate output file.
 
-Each **test** object consists of the following properties:  
+Each **test** object consists of the following properties:
 - **name**: The name you designate for the test. This is what the resulting output file will be called
 - **pdfExportSettingsId**: The CHILI ID for the PDF expport settings you want to use for the tests
 - **outputEachDocumentThisAmount**: The amount of outputs to run on each provided document
@@ -66,21 +89,20 @@ Each **test** object consists of the following properties:
 <br/>
 
 # Build
-If you'd prefer to make your own version of the tool, here's how you can do it.
 
-## Requirements
-- Node 21.x and latest NPM
-- On Mac or Linux, you need to install Bun. See [Bun Install Docs](https://bun.sh/docs/installation) or just `npm install -g bun`.
+## Web Interface
+1. Install [Bun](https://bun.sh/docs/installation)
+2. Clone the repository
+3. Run `bun install`
+4. Run `bun run build:frontend`
 
-Originally, the tool was built with [Node](https://nodejs.org) for all platforms, but due to issues with Mac and Linux builds, we switched to [Bun](https://bun.sh), which is easier to use. Once Bun supports Windows, all building processes will shift to Bun.
+## CLI
+If you'd prefer to build the CLI tool yourself:
 
-## Steps To Build
-
-Before you start, make sure you have Node 21.x and the latest NPM installed. If you're on Mac or Linux, you'll also need Bun, which you can install from its website or by running npm install -g bun.
-
-1. **Get the Code:** Clone the repository to your computer.
-2. **Install Dependencies:** Run `npm install` to get the necessary packages.
-3. **Build the Tool:** Execute `npm run build`, and you'll find the executable in the `./dist/` folder.
+1. Install [Bun](https://bun.sh/docs/installation)
+2. Clone the repository
+3. Run `bun install`
+4. Run `bun run build:cli` — you'll find the executable in the `./dist/` folder
 
 <br/>
 
