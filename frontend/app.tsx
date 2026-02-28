@@ -678,7 +678,7 @@ function ConfigView({
     }
   }
 
-  function handleHistorySelect(entry: HistoryEntry) {
+  async function handleHistorySelect(entry: HistoryEntry) {
     if (entry.datasourceGuid) {
       skipDatasourceResetRef.current = true;
     }
@@ -700,10 +700,23 @@ function ConfigView({
       setCopyToFolder(null);
     }
     if (entry.datasourceGuid) {
-      setDatasourceGuid(entry.datasourceGuid);
-      setDataSourceID(entry.dataSourceID || null);
-      setDatasourceStatus("uploaded");
-      setDatasourceFileName(entry.datasourceFileName || "(from history)");
+      const res = await fetch("/api/check-datasource-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ datasourceGuid: entry.datasourceGuid }),
+      });
+      const check = await res.json();
+      if (check.isOK && check.exists) {
+        setDatasourceGuid(entry.datasourceGuid);
+        setDataSourceID(entry.dataSourceID || null);
+        setDatasourceStatus("uploaded");
+        setDatasourceFileName(entry.datasourceFileName || "(from history)");
+      } else {
+        setDatasourceGuid(null);
+        setDataSourceID(null);
+        setDatasourceStatus("idle");
+        setDatasourceFileName(null);
+      }
     } else {
       setDatasourceGuid(null);
       setDataSourceID(null);
@@ -906,11 +919,19 @@ function ConfigView({
                     setCopyToFolder(null);
                   }
                   if (data.datasourceGuid) {
-                    skipDatasourceResetRef.current = true;
-                    setDatasourceGuid(data.datasourceGuid);
-                    setDataSourceID(data.dataSourceID || null);
-                    setDatasourceStatus("uploaded");
-                    setDatasourceFileName(data.datasourceFileName || "(from import)");
+                    const res = await fetch("/api/check-datasource-file", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ datasourceGuid: data.datasourceGuid }),
+                    });
+                    const check = await res.json();
+                    if (check.isOK && check.exists) {
+                      skipDatasourceResetRef.current = true;
+                      setDatasourceGuid(data.datasourceGuid);
+                      setDataSourceID(data.dataSourceID || null);
+                      setDatasourceStatus("uploaded");
+                      setDatasourceFileName(data.datasourceFileName || "(from import)");
+                    }
                   }
                 } catch {
                   setError("Invalid JSON file");

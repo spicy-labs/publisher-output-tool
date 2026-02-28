@@ -137,6 +137,24 @@ Bun.serve({
       },
     },
 
+    "/api/check-datasource-file": {
+      POST: async (req) => {
+        try {
+          const { datasourceGuid } = await req.json();
+          if (!datasourceGuid) {
+            return Response.json({ isOK: true, exists: false });
+          }
+          const file = Bun.file(`./datasources/${datasourceGuid}.xml`);
+          const exists = await file.exists();
+          console.log("[check-datasource-file] guid:", datasourceGuid, "exists:", exists);
+          return Response.json({ isOK: true, exists });
+        } catch (e) {
+          console.log("[check-datasource-file] EXCEPTION:", e);
+          return Response.json({ isOK: false, error: e.message }, { status: 500 });
+        }
+      },
+    },
+
     "/api/upload-datasource": {
       POST: async (req) => {
         try {
