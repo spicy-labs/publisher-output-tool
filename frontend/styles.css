@@ -593,6 +593,21 @@ input:focus, select:focus {
   background: #4b5563;
 }
 
+.btn-datasource-remove {
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.8rem;
+}
+
+.btn-datasource-remove:hover {
+  background: #b91c1c;
+}
+
+.datasource-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .datasource-error {
   background: #fef2f2;
   color: #dc2626;

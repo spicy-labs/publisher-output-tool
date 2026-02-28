@@ -5,7 +5,10 @@
   "main": "src/cli.js",
   "type": "module",
   "scripts": {
-    "build": "node build.js"
+    "build:cli": "bun scripts/build.js",
+    "build:frontend": "node scripts/build-frontend.js",
+    "start": "node scripts/build-frontend.js && node scripts/server.js",
+    "dev": "bun --hot scripts/server.bun.js"
   },
   "keywords": [],
   "author": "",
@@ -19,8 +22,7 @@
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "esbuild": "0.20.1",
-    "postject": "^1.0.0-alpha.6"
+    "esbuild": "0.20.1"
   },
   "private": true,
   "peerDependencies": {
