@@ -1,14 +1,21 @@
-import * as esbuild from "esbuild";
-import * as fs from "fs";
+import { rmSync } from "fs";
 
-await esbuild.build({
-  entryPoints: ["frontend/app.tsx"],
-  bundle: true,
+rmSync("dist/frontend", { recursive: true, force: true });
+
+const result = await Bun.build({
+  entrypoints: ["frontend/app.tsx"],
   outdir: "dist/frontend",
-  format: "esm",
   minify: true,
-  sourcemap: true,
+  sourcemap: "linked",
 });
+
+if (!result.success) {
+  console.error("Build failed:");
+  for (const log of result.logs) {
+    console.error(log);
+  }
+  process.exit(1);
+}
 
 // Generate index.html pointing to built assets
 const html = `<!DOCTYPE html>
@@ -25,5 +32,5 @@ const html = `<!DOCTYPE html>
 </body>
 </html>`;
 
-fs.writeFileSync("dist/frontend/index.html", html);
+await Bun.write("dist/frontend/index.html", html);
 console.log("Frontend built to dist/frontend/");

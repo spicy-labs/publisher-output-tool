@@ -22,10 +22,6 @@ export function getApiUrl(backofficeUrl: string): string {
   }
 }
 
-export function getUploadUrl(backofficeUrl: string): string {
-  return backofficeUrl.replace(/interface\.aspx/i, "upload_resource.aspx");
-}
-
 // --- XML parsing ---
 
 export function jsonifyChiliResponse(response: string): any {
@@ -79,20 +75,25 @@ export function clearSession(): void {
 
 // --- CHILI API functions ---
 
+export function getEnvironment(backofficeUrl: string): string {
+  const url = new URL(backofficeUrl);
+  return url.hostname.split(".")[0];
+}
+
 export async function login(params: {
   mode: "user" | "apikey";
   backofficeUrl: string;
   username?: string;
   password?: string;
-  environment?: string;
   apiKey?: string;
 }): Promise<{ isOK: boolean; apiKey?: string; error?: string }> {
   const apiUrl = getApiUrl(params.backofficeUrl);
 
   if (params.mode === "user") {
     try {
+      const environment = getEnvironment(params.backofficeUrl);
       const response = await fetch(
-        apiUrl + `/system/apikey?environmentNameOrURL=${encodeURIComponent(params.environment || "")}`,
+        apiUrl + `/system/apikey?environmentNameOrURL=${encodeURIComponent(environment)}`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -165,85 +166,49 @@ export async function getFolderTree(
   }
 }
 
-export async function checkDatasource(
-  documentId: string,
-  apiKey: string,
-  apiUrl: string,
-): Promise<{ isOK: boolean; hasDataSource?: boolean; hasDataSourceID?: boolean; dataSourceID?: string; error?: string }> {
-  try {
-    const response = await fetch(
-      apiUrl + `/resources/Documents/download?type=original&id=${documentId}`,
-      { method: "GET", headers: { "api-key": apiKey } },
-    );
-    if (!response.ok) {
-      const text = await response.text();
-      return { isOK: false, error: `DocumentDownloadOriginal failed: ${response.status} ${response.statusText}, ${text}` };
-    }
-    const xml = await response.text();
-    const parsed = jsonifyChiliResponse(xml);
-    const hasDataSource = parsed.dataSource != null;
-    const dataSourceID = hasDataSource ? (parsed.dataSource?.id || parsed.dataSource?.dataSourceID || "") : "";
-    const hasDataSourceID = hasDataSource && dataSourceID.length > 0;
-    return { isOK: true, hasDataSource, hasDataSourceID, dataSourceID };
-  } catch (e: any) {
-    return { isOK: false, error: e.message || "Network error" };
-  }
+// --- Client-side XLSX parsing ---
+
+import readXlsxFile from "read-excel-file";
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
-export async function uploadDatasource(
+export async function parseXlsxToDatasourceXml(
   file: File,
-  dataSourceID: string,
-  apiKey: string,
-  apiUrl: string,
-  uploadUrl: string,
-): Promise<{ isOK: boolean; guid?: string; datasourceXML?: string; error?: string }> {
+): Promise<{ isOK: boolean; datasourceXML?: string; error?: string }> {
   try {
-    // Upload xlsx file via server proxy (upload_resource.aspx has CORS issues)
-    const uploadForm = new FormData();
-    uploadForm.append("file", file);
-    const uploadRes = await fetch("/api/upload", {
-      method: "POST",
-      headers: {
-        "x-upload-url": uploadUrl,
-        "x-api-key": apiKey,
-      },
-      body: uploadForm,
-    });
+    const rows = await readXlsxFile(file);
 
-    if (!uploadRes.ok) {
-      return { isOK: false, error: `Upload failed: ${uploadRes.status} ${uploadRes.statusText}` };
+    if (rows.length < 2) {
+      return { isOK: false, error: "File must have at least a header row and one data row" };
     }
 
-    const uploadXml = await uploadRes.text();
-    const uploadParsed = jsonifyChiliResponse(uploadXml);
-    const guid = uploadParsed.guid || uploadParsed.id || "";
-
-    if (!guid) {
-      return { isOK: false, error: "No guid returned from upload" };
+    const headers = rows[0].map((h) => (h != null ? String(h).trim() : ""));
+    if (headers.some((h) => h === "")) {
+      return { isOK: false, error: "All header columns must have a name (no empty headers)" };
     }
 
-    // Convert xlsx to datasource XML
-    const convertRes = await fetch(
-      apiUrl + `/settings/datasources/${dataSourceID}/xmlconverter?fileExtension=xlsx`,
-      {
-        method: "PUT",
-        headers: {
-          "api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ fileDataOrPath: guid }),
-      },
-    );
-
-    if (!convertRes.ok) {
-      const text = await convertRes.text();
-      return { isOK: false, error: `DatasourceConvertXlsx failed: ${convertRes.status} ${convertRes.statusText}, ${text}` };
+    let xml = "<dataSource>\n";
+    for (let r = 1; r < rows.length; r++) {
+      xml += `  <row rowNum="${r}">\n`;
+      for (let c = 0; c < headers.length; c++) {
+        const cellValue = rows[r][c] != null ? String(rows[r][c]) : "";
+        const tag = `col${c + 1}`;
+        xml += `    <${tag} varName="${escapeXml(headers[c])}">${escapeXml(cellValue)}</${tag}>\n`;
+      }
+      xml += "  </row>\n";
     }
+    xml += "</dataSource>";
 
-    const datasourceXML = await convertRes.text();
-    return { isOK: true, guid, datasourceXML };
+    return { isOK: true, datasourceXML: xml };
   } catch (e: any) {
-    return { isOK: false, error: e.message || "Network error" };
+    return { isOK: false, error: e.message || "Failed to parse XLSX file" };
   }
 }
 
@@ -282,7 +247,7 @@ export async function startOutput(params: {
 
       if (copyToFolder) {
         try {
-          const copyName = crypto.randomUUID();
+          const copyName = self.crypto?.randomUUID?.() ?? URL.createObjectURL(new Blob()).slice(-36);
           const encodedFolder = encodeURIComponent(copyToFolder);
           const copyRes = await fetch(
             apiUrl + `/resources/Documents/items/${documentId}/copy?newName=${copyName}&folderPath=${encodedFolder}`,

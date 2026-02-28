@@ -11,11 +11,11 @@ const fileName = "publisher-output-tool";
 })();
 
 async function bundle() {
-  const bundleCommand = 'npx esbuild src/cli.js --bundle --platform=node --format=cjs --outfile=dist/bundled.js';
+  const bundleCommand = 'bun build src/cli.js --bundle --target=node --outfile=dist/bundled.js';
 
   let [results, error] = await _try(
     () => util.promisify(exec)(bundleCommand),
-    (e) => console.error(`exec esbuild error: ${e}`))
+    (e) => console.error(`bundle error: ${e}`))
 
   if (error) process.exit(1);
   console.log("bundle javascript");

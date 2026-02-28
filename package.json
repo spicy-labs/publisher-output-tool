@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "build:cli": "bun scripts/build.js",
-    "build:frontend": "node scripts/build-frontend.js",
-    "start": "node scripts/build-frontend.js && node scripts/server.js",
+    "build:frontend": "bun scripts/build-frontend.js",
+    "start": "bun scripts/build-frontend.js && bun scripts/server.bun.js",
     "dev": "bun --hot scripts/server.bun.js"
   },
   "keywords": [],
@@ -16,13 +16,13 @@
   "dependencies": {
     "fast-xml-parser": "^4.3.2",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "read-excel-file": "^5.8.6"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "esbuild": "0.20.1"
+    "@types/react-dom": "^19.2.3"
   },
   "private": true,
   "peerDependencies": {

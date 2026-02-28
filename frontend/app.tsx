@@ -113,7 +113,6 @@ function saveDatasource(guid: string, xml: string) {
 function LoginView({ onLogin }: { onLogin: (s: Session) => void }) {
   const [tab, setTab] = useState<"user" | "apikey">("user");
   const [backofficeUrl, setBackofficeUrl] = useState("");
-  const [environment, setEnvironment] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -128,7 +127,7 @@ function LoginView({ onLogin }: { onLogin: (s: Session) => void }) {
     try {
       const result = await chili.login(
         tab === "user"
-          ? { mode: "user", username, password, environment, backofficeUrl }
+          ? { mode: "user", username, password, backofficeUrl }
           : { mode: "apikey", apiKey, backofficeUrl },
       );
 
@@ -167,13 +166,6 @@ function LoginView({ onLogin }: { onLogin: (s: Session) => void }) {
 
         {tab === "user" ? (
           <>
-            <label>Environment</label>
-            <input
-              value={environment}
-              onChange={(e) => setEnvironment(e.target.value)}
-              placeholder="Environment name"
-              required
-            />
             <label>Username</label>
             <input value={username} onChange={(e) => setUsername(e.target.value)} required />
             <label>Password</label>
@@ -359,7 +351,6 @@ interface HistoryEntry {
   count: number;
   timestamp: number;
   datasourceGuid?: string;
-  dataSourceID?: string;
   datasourceFileName?: string;
   batches?: number;
   asyncBatches?: boolean;
@@ -448,76 +439,20 @@ function ConfigView({
   const [copyToFolder, setCopyToFolder] = useState<string | null>(null);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [datasourceStatus, setDatasourceStatus] = useState<
-    "idle" | "checking" | "no-datasource" | "no-id" | "ready" | "uploading" | "uploaded"
+    "idle" | "parsing" | "parsed" | "error"
   >("idle");
   const [datasourceError, setDatasourceError] = useState("");
-  const [dataSourceID, setDataSourceID] = useState<string | null>(null);
   const [datasourceGuid, setDatasourceGuid] = useState<string | null>(null);
   const [datasourceFileName, setDatasourceFileName] = useState<string | null>(null);
-  const skipDatasourceResetRef = React.useRef(false);
   const [historySidebarKey, setHistorySidebarKey] = useState(0);
 
   const apiUrl = chili.getApiUrl(session.backofficeUrl);
 
   useEffect(() => {
-    if (skipDatasourceResetRef.current) {
-      skipDatasourceResetRef.current = false;
-      return;
-    }
-    setDatasourceStatus("idle");
-    setDatasourceError("");
-    setDataSourceID(null);
-    setDatasourceGuid(null);
-    setDatasourceFileName(null);
-  }, [documentId]);
-
-  useEffect(() => {
-    if (count <= 1) {
-      setBatches(1);
-      setAsyncBatches(false);
-    }
+    setAsyncBatches(false);
   }, [count]);
 
-  async function handleAddDatasource() {
-    if (!documentId) {
-      setDatasourceError("Please enter a Document ID first");
-      return;
-    }
-
-    let sourceID = dataSourceID;
-
-    // If we don't have a dataSourceID yet, check for it
-    if (!sourceID) {
-      setDatasourceStatus("checking");
-      setDatasourceError("");
-      try {
-        const data = await chili.checkDatasource(documentId, session.apiKey, apiUrl);
-        if (!data.isOK) {
-          setDatasourceStatus("no-datasource");
-          setDatasourceError(data.error || "Failed to check datasource");
-          return;
-        }
-        if (!data.hasDataSource) {
-          setDatasourceStatus("no-datasource");
-          setDatasourceError("Document does not have a datasource configured");
-          return;
-        }
-        if (!data.hasDataSourceID) {
-          setDatasourceStatus("no-id");
-          setDatasourceError("Document has no datasource, please attach a datasource, save document, and try again");
-          return;
-        }
-        sourceID = data.dataSourceID!;
-        setDataSourceID(sourceID);
-      } catch (e: any) {
-        setDatasourceStatus("no-datasource");
-        setDatasourceError(e.message || "Network error");
-        return;
-      }
-    }
-
-    // Open file browser - set status to ready so button shows if user cancels
-    setDatasourceStatus("ready");
+  function handleAddDatasource() {
     setDatasourceError("");
 
     const input = document.createElement("input");
@@ -526,25 +461,23 @@ function ConfigView({
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
-      setDatasourceStatus("uploading");
+      setDatasourceStatus("parsing");
       setDatasourceError("");
       try {
-        const uploadUrl = chili.getUploadUrl(session.backofficeUrl);
-        const data = await chili.uploadDatasource(file, sourceID!, session.apiKey, apiUrl, uploadUrl);
+        const data = await chili.parseXlsxToDatasourceXml(file);
         if (data.isOK) {
-          setDatasourceGuid(data.guid!);
+          const guid = self.crypto?.randomUUID?.() ?? URL.createObjectURL(new Blob()).slice(-36);
+          saveDatasource(guid, data.datasourceXML!);
+          setDatasourceGuid(guid);
           setDatasourceFileName(file.name);
-          setDatasourceStatus("uploaded");
-          if (data.datasourceXML) {
-            saveDatasource(data.guid!, data.datasourceXML);
-          }
+          setDatasourceStatus("parsed");
         } else {
-          setDatasourceStatus("ready");
-          setDatasourceError(data.error || "Upload failed");
+          setDatasourceStatus("error");
+          setDatasourceError(data.error || "Failed to parse file");
         }
       } catch (e: any) {
-        setDatasourceStatus("ready");
-        setDatasourceError(e.message || "Network error");
+        setDatasourceStatus("error");
+        setDatasourceError(e.message || "Failed to parse file");
       }
     };
     input.click();
@@ -597,7 +530,6 @@ function ConfigView({
           count,
           timestamp: Date.now(),
           ...(datasourceGuid ? { datasourceGuid } : {}),
-          ...(dataSourceID ? { dataSourceID } : {}),
           ...(datasourceFileName ? { datasourceFileName } : {}),
           ...(batches > 1 ? { batches, asyncBatches } : {}),
           ...(copyBeforeOutput && copyToFolder ? { copyToFolder } : {}),
@@ -631,7 +563,6 @@ function ConfigView({
           count,
           timestamp: Date.now(),
           ...(datasourceGuid ? { datasourceGuid } : {}),
-          ...(dataSourceID ? { dataSourceID } : {}),
           ...(datasourceFileName ? { datasourceFileName } : {}),
           batches,
           asyncBatches,
@@ -656,9 +587,6 @@ function ConfigView({
   }
 
   function handleHistorySelect(entry: HistoryEntry) {
-    if (entry.datasourceGuid) {
-      skipDatasourceResetRef.current = true;
-    }
     setDocumentId(entry.documentId);
     setSettingsId(entry.pdfExportSettingsId);
     setCount(entry.count);
@@ -677,22 +605,18 @@ function ConfigView({
       setCopyToFolder(null);
     }
     if (entry.datasourceGuid) {
-      // Check localStorage for datasource
       const xml = getDatasource(entry.datasourceGuid);
       if (xml) {
         setDatasourceGuid(entry.datasourceGuid);
-        setDataSourceID(entry.dataSourceID || null);
-        setDatasourceStatus("uploaded");
+        setDatasourceStatus("parsed");
         setDatasourceFileName(entry.datasourceFileName || "(from history)");
       } else {
         setDatasourceGuid(null);
-        setDataSourceID(null);
         setDatasourceStatus("idle");
         setDatasourceFileName(null);
       }
     } else {
       setDatasourceGuid(null);
-      setDataSourceID(null);
       setDatasourceStatus("idle");
       setDatasourceFileName(null);
     }
@@ -713,6 +637,7 @@ function ConfigView({
       />
       <div className="card">
         <h1>Output Configuration</h1>
+        <div style={{ color: "#888", fontSize: "0.85em", marginBottom: "12px" }}>{apiUrl}</div>
         <form onSubmit={handleSubmit}>
           <label>Document ID</label>
           <input value={documentId} onChange={(e) => setDocumentId(e.target.value)} required />
@@ -730,30 +655,16 @@ function ConfigView({
             }}
           />
 
-          {count > 1 && (
-            <>
-              <label>Number of Batches</label>
-              <div className="batch-config-row">
-                <select value={batches} onChange={(e) => setBatches(Number(e.target.value))}>
-                  {Array.from({ length: 5 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      {i + 1}
-                    </option>
-                  ))}
-                </select>
-                {batches > 1 && (
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={asyncBatches}
-                      onChange={(e) => setAsyncBatches(e.target.checked)}
-                    />
-                    Async
-                  </label>
-                )}
-              </div>
-            </>
-          )}
+          <label>Number of Batches</label>
+          <div className="batch-config-row">
+            <select value={batches} onChange={(e) => setBatches(Number(e.target.value))}>
+              {Array.from({ length: 5 }, (_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {i + 1}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div className="copy-section">
             <label className="checkbox-label">
@@ -782,7 +693,7 @@ function ConfigView({
           </div>
 
           <div className="datasource-section">
-            {(datasourceStatus === "idle" || datasourceStatus === "ready" || datasourceStatus === "no-datasource") && (
+            {(datasourceStatus === "idle" || datasourceStatus === "error") && (
               <>
                 <button type="button" className="btn btn-datasource" onClick={handleAddDatasource}>
                   Add Datasource
@@ -790,18 +701,10 @@ function ConfigView({
                 {datasourceError && <div className="datasource-error">{datasourceError}</div>}
               </>
             )}
-            {datasourceStatus === "no-id" && (
-              <>
-                <button type="button" className="btn btn-datasource" disabled>
-                  Add Datasource
-                </button>
-                {datasourceError && <div className="datasource-error">{datasourceError}</div>}
-              </>
-            )}
-            {datasourceStatus === "uploaded" && (
+            {datasourceStatus === "parsed" && (
               <>
                 <div className="datasource-success">
-                  Datasource uploaded: {datasourceFileName}
+                  Datasource loaded: {datasourceFileName}
                 </div>
                 <div className="datasource-actions">
                   <button type="button" className="btn btn-datasource-change" onClick={handleAddDatasource}>
@@ -810,7 +713,7 @@ function ConfigView({
                   <button type="button" className="btn btn-datasource-remove" onClick={() => {
                     setDatasourceGuid(null);
                     setDatasourceFileName(null);
-                    setDatasourceStatus("ready");
+                    setDatasourceStatus("idle");
                     setDatasourceError("");
                   }}>
                     Remove Datasource
@@ -820,8 +723,8 @@ function ConfigView({
             )}
           </div>
 
-          {(datasourceStatus === "checking" || datasourceStatus === "uploading") && (
-            <ProcessingModal message="Processing..." />
+          {datasourceStatus === "parsing" && (
+            <ProcessingModal message="Parsing datasource..." />
           )}
 
           {error && <div className="error">{error}</div>}
@@ -844,7 +747,6 @@ function ConfigView({
                 count,
                 timestamp: Date.now(),
                 ...(datasourceGuid ? { datasourceGuid } : {}),
-                ...(dataSourceID ? { dataSourceID } : {}),
                 ...(datasourceFileName ? { datasourceFileName } : {}),
                 ...(batches > 1 ? { batches, asyncBatches } : {}),
                 ...(copyBeforeOutput && copyToFolder ? { copyToFolder } : {}),
@@ -894,10 +796,8 @@ function ConfigView({
                   if (data.datasourceGuid) {
                     const xml = getDatasource(data.datasourceGuid);
                     if (xml) {
-                      skipDatasourceResetRef.current = true;
                       setDatasourceGuid(data.datasourceGuid);
-                      setDataSourceID(data.dataSourceID || null);
-                      setDatasourceStatus("uploaded");
+                      setDatasourceStatus("parsed");
                       setDatasourceFileName(data.datasourceFileName || "(from import)");
                     }
                   }
@@ -1349,4 +1249,7 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+const container = document.getElementById("root")!;
+const root = (container as any).__root ?? createRoot(container);
+(container as any).__root = root;
+root.render(<App />);
