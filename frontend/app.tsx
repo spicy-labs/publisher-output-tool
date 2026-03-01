@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import * as chili from "./chili";
 
 interface Session {
   apiKey: string;
@@ -33,7 +34,6 @@ interface ProgressConfig {
   totalBatchCount: number;
   isAsync: boolean;
   outputConfig?: OutputConfig;
-  historyTimestamp?: number;
   resumeMode?: boolean;
 }
 
@@ -89,25 +89,23 @@ function createTaskState(id: string | { error: string }, index: number): TaskSta
   };
 }
 
-const COOKIE_MAX_AGE = 3 * 60 * 60; // 3 hours in seconds
+// --- localStorage helpers ---
 
-function saveSessionCookie(session: Session) {
-  const value = encodeURIComponent(JSON.stringify(session));
-  document.cookie = `session=${value}; max-age=${COOKIE_MAX_AGE}; path=/; SameSite=Lax`;
+function getHistory(backofficeUrl: string): HistoryEntry[] {
+  const raw = localStorage.getItem(`pot_history_${backofficeUrl}`);
+  return raw ? JSON.parse(raw) : [];
 }
 
-function loadSessionCookie(): Session | null {
-  const match = document.cookie.match(/(?:^|; )session=([^;]*)/);
-  if (!match) return null;
-  try {
-    return JSON.parse(decodeURIComponent(match[1]));
-  } catch {
-    return null;
-  }
+function saveHistory(backofficeUrl: string, entries: HistoryEntry[]) {
+  localStorage.setItem(`pot_history_${backofficeUrl}`, JSON.stringify(entries.slice(0, 50)));
 }
 
-function clearSessionCookie() {
-  document.cookie = "session=; max-age=0; path=/; SameSite=Lax";
+function getDatasource(guid: string): string | null {
+  return localStorage.getItem(`pot_datasource_${guid}`);
+}
+
+function saveDatasource(guid: string, xml: string) {
+  localStorage.setItem(`pot_datasource_${guid}`, xml);
 }
 
 // --- Login View ---
@@ -115,7 +113,6 @@ function clearSessionCookie() {
 function LoginView({ onLogin }: { onLogin: (s: Session) => void }) {
   const [tab, setTab] = useState<"user" | "apikey">("user");
   const [backofficeUrl, setBackofficeUrl] = useState("");
-  const [environment, setEnvironment] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -125,24 +122,20 @@ function LoginView({ onLogin }: { onLogin: (s: Session) => void }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-
-    if (tab === "apikey") {
-      onLogin({ apiKey, backofficeUrl });
-      return;
-    }
-
     setLoading(true);
+
     try {
-      const res = await fetch("/api/generate-api-key", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, environment, backofficeUrl }),
-      });
-      const data = await res.json();
-      if (data.isOK) {
-        onLogin({ apiKey: data.apiKey, backofficeUrl });
+      const result = await chili.login(
+        tab === "user"
+          ? { mode: "user", username, password, backofficeUrl }
+          : { mode: "apikey", apiKey, backofficeUrl },
+      );
+
+      if (result.isOK && result.apiKey) {
+        chili.setSession(result.apiKey, backofficeUrl);
+        onLogin({ apiKey: result.apiKey, backofficeUrl });
       } else {
-        setError(data.error || "Login failed");
+        setError(result.error || "Login failed");
       }
     } catch (e: any) {
       setError(e.message || "Network error");
@@ -167,19 +160,12 @@ function LoginView({ onLogin }: { onLogin: (s: Session) => void }) {
         <input
           value={backofficeUrl}
           onChange={(e) => setBackofficeUrl(e.target.value)}
-          placeholder="https://example.chili-publish.online/interface.aspx"
+          placeholder="https://example.chili-publish.online/example/interface.aspx"
           required
         />
 
         {tab === "user" ? (
           <>
-            <label>Environment</label>
-            <input
-              value={environment}
-              onChange={(e) => setEnvironment(e.target.value)}
-              placeholder="Environment name"
-              required
-            />
             <label>Username</label>
             <input value={username} onChange={(e) => setUsername(e.target.value)} required />
             <label>Password</label>
@@ -204,7 +190,7 @@ function LoginView({ onLogin }: { onLogin: (s: Session) => void }) {
 
         {error && <div className="error">{error}</div>}
         <button type="submit" className="btn btn-primary" disabled={loading}>
-          {loading ? "Generating API Key..." : tab === "user" ? "Login" : "Continue"}
+          {loading ? (tab === "user" ? "Generating API Key..." : "Validating API Key...") : tab === "user" ? "Login" : "Continue"}
         </button>
       </form>
     </div>
@@ -212,12 +198,6 @@ function LoginView({ onLogin }: { onLogin: (s: Session) => void }) {
 }
 
 // --- Folder Browser Modal ---
-
-interface FolderItem {
-  name: string;
-  path: string;
-  hasSubDirectories: boolean;
-}
 
 function FolderBrowserModal({
   session,
@@ -229,11 +209,12 @@ function FolderBrowserModal({
   onCancel: () => void;
 }) {
   const [currentPath, setCurrentPath] = useState("");
-  const [folders, setFolders] = useState<FolderItem[]>([]);
+  const [folders, setFolders] = useState<chili.FolderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 
+  const apiUrl = chili.getApiUrl(session.backofficeUrl);
   const breadcrumbs = currentPath
     ? currentPath.split("\\").filter(Boolean)
     : [];
@@ -243,18 +224,9 @@ function FolderBrowserModal({
     setError("");
     setSelectedFolder(null);
     try {
-      const res = await fetch("/api/folder-tree", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          parentFolder,
-          apiKey: session.apiKey,
-          backofficeUrl: session.backofficeUrl,
-        }),
-      });
-      const data = await res.json();
+      const data = await chili.getFolderTree(parentFolder, session.apiKey, apiUrl);
       if (data.isOK) {
-        setFolders(data.items);
+        setFolders(data.items!);
         setCurrentPath(parentFolder);
       } else {
         setError(data.error || "Failed to load folders");
@@ -379,7 +351,6 @@ interface HistoryEntry {
   count: number;
   timestamp: number;
   datasourceGuid?: string;
-  dataSourceID?: string;
   datasourceFileName?: string;
   batches?: number;
   asyncBatches?: boolean;
@@ -396,35 +367,19 @@ function HistorySidebar({
   onSelect: (entry: HistoryEntry) => void;
   onResume: (entry: HistoryEntry) => void;
 }) {
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [entries, setEntries] = useState<HistoryEntry[]>(() =>
+    getHistory(session.backofficeUrl),
+  );
 
+  // Re-read from localStorage when backofficeUrl changes
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/history", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ backofficeUrl: session.backofficeUrl }),
-        });
-        const data = await res.json();
-        if (data.isOK) setEntries(data.entries);
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
-      }
-    })();
+    setEntries(getHistory(session.backofficeUrl));
   }, [session.backofficeUrl]);
 
   return (
     <div className="history-sidebar">
       <h2>Previous Outputs</h2>
-      {loading ? (
-        <div style={{ textAlign: "center", padding: "16px" }}>
-          <span className="spinner" />
-        </div>
-      ) : entries.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="history-empty">No previous outputs</div>
       ) : (
         entries.map((entry, i) => (
@@ -484,105 +439,45 @@ function ConfigView({
   const [copyToFolder, setCopyToFolder] = useState<string | null>(null);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [datasourceStatus, setDatasourceStatus] = useState<
-    "idle" | "checking" | "no-datasource" | "no-id" | "ready" | "uploading" | "uploaded"
+    "idle" | "parsing" | "parsed" | "error"
   >("idle");
   const [datasourceError, setDatasourceError] = useState("");
-  const [dataSourceID, setDataSourceID] = useState<string | null>(null);
   const [datasourceGuid, setDatasourceGuid] = useState<string | null>(null);
   const [datasourceFileName, setDatasourceFileName] = useState<string | null>(null);
-  const skipDatasourceResetRef = React.useRef(false);
+  const [historySidebarKey, setHistorySidebarKey] = useState(0);
+
+  const apiUrl = chili.getApiUrl(session.backofficeUrl);
 
   useEffect(() => {
-    if (skipDatasourceResetRef.current) {
-      skipDatasourceResetRef.current = false;
-      return;
-    }
-    setDatasourceStatus("idle");
-    setDatasourceError("");
-    setDataSourceID(null);
-    setDatasourceGuid(null);
-    setDatasourceFileName(null);
-  }, [documentId]);
-
-  useEffect(() => {
-    if (count <= 1) {
-      setBatches(1);
-      setAsyncBatches(false);
-    }
+    setAsyncBatches(false);
   }, [count]);
 
-  async function handleCheckDatasource() {
-    if (!documentId) {
-      setDatasourceError("Please enter a Document ID first");
-      return;
-    }
-    setDatasourceStatus("checking");
+  function handleAddDatasource() {
     setDatasourceError("");
-    try {
-      const res = await fetch("/api/check-datasource", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          documentId,
-          apiKey: session.apiKey,
-          backofficeUrl: session.backofficeUrl,
-        }),
-      });
-      const data = await res.json();
-      if (!data.isOK) {
-        setDatasourceStatus("no-datasource");
-        setDatasourceError(data.error || "Failed to check datasource");
-        return;
-      }
-      if (!data.hasDataSource) {
-        setDatasourceStatus("no-datasource");
-        setDatasourceError("Document does not have a datasource configured");
-        return;
-      }
-      if (!data.hasDataSourceID) {
-        setDatasourceStatus("no-id");
-        setDatasourceError("Document has a datasource node but no datasource ID");
-        return;
-      }
-      setDataSourceID(data.dataSourceID);
-      setDatasourceStatus("ready");
-    } catch (e: any) {
-      setDatasourceStatus("no-datasource");
-      setDatasourceError(e.message || "Network error");
-    }
-  }
 
-  async function handleUploadDatasource() {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".xlsx";
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
-      setDatasourceStatus("uploading");
+      setDatasourceStatus("parsing");
       setDatasourceError("");
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("apiKey", session.apiKey);
-        formData.append("backofficeUrl", session.backofficeUrl);
-        formData.append("dataSourceID", dataSourceID!);
-        const res = await fetch("/api/upload-datasource", {
-          method: "POST",
-          body: formData,
-        });
-        const data = await res.json();
+        const data = await chili.parseXlsxToDatasourceXml(file);
         if (data.isOK) {
-          setDatasourceGuid(data.guid);
+          const guid = self.crypto?.randomUUID?.() ?? URL.createObjectURL(new Blob()).slice(-36);
+          saveDatasource(guid, data.datasourceXML!);
+          setDatasourceGuid(guid);
           setDatasourceFileName(file.name);
-          setDatasourceStatus("uploaded");
+          setDatasourceStatus("parsed");
         } else {
-          setDatasourceStatus("ready");
-          setDatasourceError(data.error || "Upload failed");
+          setDatasourceStatus("error");
+          setDatasourceError(data.error || "Failed to parse file");
         }
       } catch (e: any) {
-        setDatasourceStatus("ready");
-        setDatasourceError(e.message || "Network error");
+        setDatasourceStatus("error");
+        setDatasourceError(e.message || "Failed to parse file");
       }
     };
     input.click();
@@ -605,70 +500,83 @@ function ConfigView({
       ...(datasourceGuid ? { datasourceGuid } : {}),
     };
 
-    const requestBody = {
-      ...outputConfig,
+    // Build request params - include datasourceXML from localStorage if needed
+    const datasourceXML = datasourceGuid ? getDatasource(datasourceGuid) : null;
+
+    const startParams = {
+      documentId,
+      pdfExportSettingsId: settingsId,
+      count,
       apiKey: session.apiKey,
-      backofficeUrl: session.backofficeUrl,
-      ...(batches > 1 ? { batches, asyncBatches } : {}),
-      ...(dataSourceID ? { dataSourceID } : {}),
-      ...(datasourceFileName ? { datasourceFileName } : {}),
+      apiUrl,
+      ...(copyBeforeOutput && copyToFolder ? { copyToFolder } : {}),
+      ...(datasourceXML ? { datasourceXML } : {}),
     };
 
     try {
       if (batches <= 1 || !asyncBatches) {
         // Single batch or sync mode: start only the first batch
-        const res = await fetch("/api/start-output", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
-        });
-        const data = await res.json();
+        const data = await chili.startOutput(startParams);
         if (!data.isOK) {
           setError(data.error || "Failed to start output");
           return;
         }
+
+        // Save to localStorage history
+        const entries = getHistory(session.backofficeUrl);
+        entries.unshift({
+          documentId,
+          pdfExportSettingsId: settingsId,
+          count,
+          timestamp: Date.now(),
+          ...(datasourceGuid ? { datasourceGuid } : {}),
+          ...(datasourceFileName ? { datasourceFileName } : {}),
+          ...(batches > 1 ? { batches, asyncBatches } : {}),
+          ...(copyBeforeOutput && copyToFolder ? { copyToFolder } : {}),
+          batchTaskIds: [data.taskIds!],
+        });
+        saveHistory(session.backofficeUrl, entries);
+        setHistorySidebarKey((k) => k + 1);
+
         onStart({
-          batchTaskIds: [data.taskIds],
+          batchTaskIds: [data.taskIds!],
           totalBatchCount: batches,
           isAsync: false,
           outputConfig,
-          historyTimestamp: data.timestamp,
         });
       } else {
         // Async mode: start all batches in parallel
-        const promises = Array.from({ length: batches }, (_, i) =>
-          fetch("/api/start-output", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...requestBody, skipHistory: i > 0 }),
-          }).then((r) => r.json()),
+        const results = await Promise.all(
+          Array.from({ length: batches }, () => chili.startOutput(startParams)),
         );
-        const results = await Promise.all(promises);
         const failed = results.find((r) => !r.isOK);
         if (failed) {
           setError(failed.error || "Failed to start output");
           return;
         }
-        const historyTimestamp = results[0].timestamp;
-        // Persist task IDs for batches 1+ to the history entry
-        for (let i = 1; i < results.length; i++) {
-          fetch("/api/update-run-tasks", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              backofficeUrl: session.backofficeUrl,
-              timestamp: historyTimestamp,
-              batchIndex: i,
-              taskIds: results[i].taskIds,
-            }),
-          }).catch(() => {});
-        }
+
+        // Save to localStorage history
+        const entries = getHistory(session.backofficeUrl);
+        entries.unshift({
+          documentId,
+          pdfExportSettingsId: settingsId,
+          count,
+          timestamp: Date.now(),
+          ...(datasourceGuid ? { datasourceGuid } : {}),
+          ...(datasourceFileName ? { datasourceFileName } : {}),
+          batches,
+          asyncBatches,
+          ...(copyBeforeOutput && copyToFolder ? { copyToFolder } : {}),
+          batchTaskIds: results.map((r) => r.taskIds!),
+        });
+        saveHistory(session.backofficeUrl, entries);
+        setHistorySidebarKey((k) => k + 1);
+
         onStart({
-          batchTaskIds: results.map((r) => r.taskIds),
+          batchTaskIds: results.map((r) => r.taskIds!),
           totalBatchCount: batches,
           isAsync: true,
           outputConfig,
-          historyTimestamp,
         });
       }
     } catch (e: any) {
@@ -679,9 +587,6 @@ function ConfigView({
   }
 
   function handleHistorySelect(entry: HistoryEntry) {
-    if (entry.datasourceGuid) {
-      skipDatasourceResetRef.current = true;
-    }
     setDocumentId(entry.documentId);
     setSettingsId(entry.pdfExportSettingsId);
     setCount(entry.count);
@@ -700,13 +605,18 @@ function ConfigView({
       setCopyToFolder(null);
     }
     if (entry.datasourceGuid) {
-      setDatasourceGuid(entry.datasourceGuid);
-      setDataSourceID(entry.dataSourceID || null);
-      setDatasourceStatus("uploaded");
-      setDatasourceFileName(entry.datasourceFileName || "(from history)");
+      const xml = getDatasource(entry.datasourceGuid);
+      if (xml) {
+        setDatasourceGuid(entry.datasourceGuid);
+        setDatasourceStatus("parsed");
+        setDatasourceFileName(entry.datasourceFileName || "(from history)");
+      } else {
+        setDatasourceGuid(null);
+        setDatasourceStatus("idle");
+        setDatasourceFileName(null);
+      }
     } else {
       setDatasourceGuid(null);
-      setDataSourceID(null);
       setDatasourceStatus("idle");
       setDatasourceFileName(null);
     }
@@ -715,6 +625,7 @@ function ConfigView({
   return (
     <div className="config-layout">
       <HistorySidebar
+        key={historySidebarKey}
         session={session}
         onSelect={handleHistorySelect}
         onResume={(entry) => onResume({
@@ -726,44 +637,34 @@ function ConfigView({
       />
       <div className="card">
         <h1>Output Configuration</h1>
+        <div style={{ color: "#888", fontSize: "0.85em", marginBottom: "12px" }}>{apiUrl}</div>
         <form onSubmit={handleSubmit}>
           <label>Document ID</label>
           <input value={documentId} onChange={(e) => setDocumentId(e.target.value)} required />
           <label>PDF Export Settings ID</label>
           <input value={settingsId} onChange={(e) => setSettingsId(e.target.value)} required />
           <label>Number of Outputs</label>
-          <select value={count} onChange={(e) => setCount(Number(e.target.value))}>
-            {Array.from({ length: 25 }, (_, i) => (
-              <option key={i + 1} value={i + 1}>
-                {i + 1}
-              </option>
-            ))}
-          </select>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={count}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (!isNaN(val)) setCount(Math.max(1, Math.min(100, val)));
+            }}
+          />
 
-          {count > 1 && (
-            <>
-              <label>Number of Batches</label>
-              <div className="batch-config-row">
-                <select value={batches} onChange={(e) => setBatches(Number(e.target.value))}>
-                  {Array.from({ length: 5 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      {i + 1}
-                    </option>
-                  ))}
-                </select>
-                {batches > 1 && (
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={asyncBatches}
-                      onChange={(e) => setAsyncBatches(e.target.checked)}
-                    />
-                    Async
-                  </label>
-                )}
-              </div>
-            </>
-          )}
+          <label>Number of Batches</label>
+          <div className="batch-config-row">
+            <select value={batches} onChange={(e) => setBatches(Number(e.target.value))}>
+              {Array.from({ length: 5 }, (_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {i + 1}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div className="copy-section">
             <label className="checkbox-label">
@@ -792,50 +693,38 @@ function ConfigView({
           </div>
 
           <div className="datasource-section">
-            {datasourceStatus === "idle" && (
-              <button type="button" className="btn btn-datasource" onClick={handleCheckDatasource}>
-                Add Datasource
-              </button>
-            )}
-            {(datasourceStatus === "no-datasource") && (
+            {(datasourceStatus === "idle" || datasourceStatus === "error") && (
               <>
-                <button type="button" className="btn btn-datasource" onClick={handleCheckDatasource}>
+                <button type="button" className="btn btn-datasource" onClick={handleAddDatasource}>
                   Add Datasource
                 </button>
                 {datasourceError && <div className="datasource-error">{datasourceError}</div>}
               </>
             )}
-            {datasourceStatus === "no-id" && (
-              <>
-                <button type="button" className="btn btn-datasource" disabled>
-                  Add Datasource
-                </button>
-                {datasourceError && <div className="datasource-error">{datasourceError}</div>}
-              </>
-            )}
-            {datasourceStatus === "ready" && (
-              <>
-                <div className="datasource-info">Datasource ID: {dataSourceID}</div>
-                <button type="button" className="btn btn-datasource-upload" onClick={handleUploadDatasource}>
-                  Upload Datasource
-                </button>
-                {datasourceError && <div className="datasource-error">{datasourceError}</div>}
-              </>
-            )}
-            {datasourceStatus === "uploaded" && (
+            {datasourceStatus === "parsed" && (
               <>
                 <div className="datasource-success">
-                  Datasource uploaded: {datasourceFileName}
+                  Datasource loaded: {datasourceFileName}
                 </div>
-                <button type="button" className="btn btn-datasource-change" onClick={handleUploadDatasource}>
-                  Change Datasource
-                </button>
+                <div className="datasource-actions">
+                  <button type="button" className="btn btn-datasource-change" onClick={handleAddDatasource}>
+                    Change Datasource
+                  </button>
+                  <button type="button" className="btn btn-datasource-remove" onClick={() => {
+                    setDatasourceGuid(null);
+                    setDatasourceFileName(null);
+                    setDatasourceStatus("idle");
+                    setDatasourceError("");
+                  }}>
+                    Remove Datasource
+                  </button>
+                </div>
               </>
             )}
           </div>
 
-          {(datasourceStatus === "checking" || datasourceStatus === "uploading") && (
-            <ProcessingModal message="Processing..." />
+          {datasourceStatus === "parsing" && (
+            <ProcessingModal message="Parsing datasource..." />
           )}
 
           {error && <div className="error">{error}</div>}
@@ -858,7 +747,6 @@ function ConfigView({
                 count,
                 timestamp: Date.now(),
                 ...(datasourceGuid ? { datasourceGuid } : {}),
-                ...(dataSourceID ? { dataSourceID } : {}),
                 ...(datasourceFileName ? { datasourceFileName } : {}),
                 ...(batches > 1 ? { batches, asyncBatches } : {}),
                 ...(copyBeforeOutput && copyToFolder ? { copyToFolder } : {}),
@@ -906,11 +794,12 @@ function ConfigView({
                     setCopyToFolder(null);
                   }
                   if (data.datasourceGuid) {
-                    skipDatasourceResetRef.current = true;
-                    setDatasourceGuid(data.datasourceGuid);
-                    setDataSourceID(data.dataSourceID || null);
-                    setDatasourceStatus("uploaded");
-                    setDatasourceFileName(data.datasourceFileName || "(from import)");
+                    const xml = getDatasource(data.datasourceGuid);
+                    if (xml) {
+                      setDatasourceGuid(data.datasourceGuid);
+                      setDatasourceStatus("parsed");
+                      setDatasourceFileName(data.datasourceFileName || "(from import)");
+                    }
                   }
                 } catch {
                   setError("Invalid JSON file");
@@ -950,6 +839,8 @@ function ProgressView({
 }) {
   const { batchTaskIds: initialBatchTaskIds, totalBatchCount, isAsync, outputConfig, resumeMode } = progressConfig;
   const singleBatch = totalBatchCount === 1;
+
+  const apiUrl = chili.getApiUrl(session.backofficeUrl);
 
   const [batches, setBatches] = useState<BatchViewState[]>(() =>
     Array.from({ length: totalBatchCount }, (_, i) => {
@@ -1006,38 +897,34 @@ function ProgressView({
       );
 
       try {
-        const res = await fetch("/api/start-output", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...outputConfig,
-            apiKey: session.apiKey,
-            backofficeUrl: session.backofficeUrl,
-            skipHistory: true,
-          }),
+        // Build request params - include datasourceXML from localStorage if needed
+        const datasourceXML = outputConfig?.datasourceGuid ? getDatasource(outputConfig.datasourceGuid) : null;
+
+        const data = await chili.startOutput({
+          documentId: outputConfig?.documentId || "",
+          pdfExportSettingsId: outputConfig?.pdfExportSettingsId || "",
+          count: outputConfig?.count || 1,
+          apiKey: session.apiKey,
+          apiUrl,
+          ...(outputConfig?.copyToFolder ? { copyToFolder: outputConfig.copyToFolder } : {}),
+          ...(datasourceXML ? { datasourceXML } : {}),
         });
-        const data = await res.json();
 
         if (data.isOK) {
-          const newTaskStates = data.taskIds.map(
+          const newTaskStates = data.taskIds!.map(
             (id: string | { error: string }, j: number) => createTaskState(id, j),
           );
-          const pollableIds = data.taskIds.filter(
+          const pollableIds = data.taskIds!.filter(
             (id: any): id is string => typeof id === "string",
           );
 
-          // Persist task IDs for sync-mode subsequent batches
-          if (progressConfig.historyTimestamp && batchIndex > 0) {
-            fetch("/api/update-run-tasks", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                backofficeUrl: session.backofficeUrl,
-                timestamp: progressConfig.historyTimestamp,
-                batchIndex,
-                taskIds: data.taskIds,
-              }),
-            }).catch(() => {});
+          // Save batch task IDs to localStorage history
+          const entries = getHistory(session.backofficeUrl);
+          if (entries.length > 0) {
+            const latest = entries[0];
+            if (!latest.batchTaskIds) latest.batchTaskIds = [];
+            latest.batchTaskIds[batchIndex] = data.taskIds!;
+            saveHistory(session.backofficeUrl, entries);
           }
 
           if (pollableIds.length === 0) {
@@ -1111,16 +998,7 @@ function ProgressView({
 
         await Promise.allSettled(
           pending.map(async (taskId) => {
-            const res = await fetch("/api/task-status", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                taskId,
-                apiKey: session.apiKey,
-                backofficeUrl: session.backofficeUrl,
-              }),
-            });
-            const data = await res.json();
+            const data = await chili.getTaskStatus(taskId, session.apiKey, apiUrl);
             if (data.finished === "True") {
               batch.finished.add(taskId);
               setBatches((prev) =>
@@ -1192,16 +1070,7 @@ function ProgressView({
   }, []);
 
   async function downloadXml(taskId: string) {
-    const res = await fetch("/api/task-xml", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId,
-        apiKey: session.apiKey,
-        backofficeUrl: session.backofficeUrl,
-      }),
-    });
-    const blob = await res.blob();
+    const blob = await chili.getTaskXml(taskId, session.apiKey, apiUrl);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1325,19 +1194,27 @@ function ProgressView({
 // --- App ---
 
 function App() {
-  const [session, setSession] = useState<Session | null>(loadSessionCookie);
-  const [view, setView] = useState<"login" | "config" | "progress">(session ? "config" : "login");
+  const [session, setSession] = useState<Session | null>(null);
+  const [view, setView] = useState<"login" | "config" | "progress">("login");
   const [progressConfig, setProgressConfig] = useState<ProgressConfig | null>(null);
+
+  // On mount, check for existing session from cookies
+  useEffect(() => {
+    const saved = chili.getSession();
+    if (saved) {
+      setSession(saved);
+      setView("config");
+    }
+  }, []);
 
   function handleLogin(s: Session) {
     setSession(s);
-    saveSessionCookie(s);
     setView("config");
   }
 
   function handleLogout() {
+    chili.clearSession();
     setSession(null);
-    clearSessionCookie();
     setView("login");
   }
 
@@ -1372,4 +1249,7 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+const container = document.getElementById("root")!;
+const root = (container as any).__root ?? createRoot(container);
+(container as any).__root = root;
+root.render(<App />);
